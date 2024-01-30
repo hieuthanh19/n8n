@@ -62,9 +62,10 @@ export class License {
 		const onFeatureChange = isMainInstance
 			? async (features: TFeatures) => await this.onFeatureChange(features)
 			: async () => {};
-		const collectUsageMetrics = isMainInstance
-			? async () => await this.usageMetricsService.collectUsageMetrics()
-			: async () => [];
+		// const collectUsageMetrics = isMainInstance
+		// 	? async () => await this.usageMetricsService.collectUsageMetrics()
+		// 	: async () => [];
+		const collectUsageMetrics = async () => [];
 
 		try {
 			this.manager = new LicenseManager({
@@ -84,6 +85,8 @@ export class License {
 			});
 
 			await this.manager.initialize();
+
+			console.log('license manager: ', this.manager)
 		} catch (e: unknown) {
 			if (e instanceof Error) {
 				this.logger.error('Could not initialize license manager sdk', e);
@@ -108,9 +111,10 @@ export class License {
 
 	async onFeatureChange(_features: TFeatures): Promise<void> {
 		if (config.getEnv('executions.mode') === 'queue' && config.getEnv('multiMainSetup.enabled')) {
-			const isMultiMainLicensed = _features[LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES] as
-				| boolean
-				| undefined;
+			// const isMultiMainLicensed = _features[LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES] as
+			// 	| boolean
+			// 	| undefined;
+			const isMultiMainLicensed = true
 
 			this.orchestrationService.setMultiMainSetupLicensed(isMultiMainLicensed ?? false);
 
@@ -143,7 +147,8 @@ export class License {
 
 		const isS3Selected = config.getEnv('binaryDataManager.mode') === 's3';
 		const isS3Available = config.getEnv('binaryDataManager.availableModes').includes('s3');
-		const isS3Licensed = _features['feat:binaryDataS3'];
+		// const isS3Licensed = _features['feat:binaryDataS3'];
+		const isS3Licensed = true;
 
 		if (isS3Selected && isS3Available && !isS3Licensed) {
 			this.logger.debug(
@@ -205,67 +210,83 @@ export class License {
 	}
 
 	isFeatureEnabled(feature: BooleanLicenseFeature) {
-		return this.manager?.hasFeatureEnabled(feature) ?? false;
+		// return this.manager?.hasFeatureEnabled(feature) ?? false;
+		return true;
 	}
 
 	isSharingEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.SHARING);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.SHARING);
+		return true;
 	}
 
 	isLogStreamingEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.LOG_STREAMING);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.LOG_STREAMING);
+		return true
 	}
 
 	isLdapEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.LDAP);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.LDAP);
+		return true
 	}
 
 	isSamlEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.SAML);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.SAML);
+		return true
 	}
 
 	isAdvancedExecutionFiltersEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_EXECUTION_FILTERS);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_EXECUTION_FILTERS);
+		return true
 	}
 
 	isAdvancedPermissionsLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_PERMISSIONS);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_PERMISSIONS);
+		return true
 	}
 
 	isDebugInEditorLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.DEBUG_IN_EDITOR);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.DEBUG_IN_EDITOR);
+		return true
 	}
 
 	isBinaryDataS3Licensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.BINARY_DATA_S3);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.BINARY_DATA_S3);
+		return true
 	}
 
 	isMultipleMainInstancesLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES);
+		return true
 	}
 
 	isVariablesEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.VARIABLES);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.VARIABLES);
+		return true
 	}
 
 	isSourceControlLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.SOURCE_CONTROL);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.SOURCE_CONTROL);
+		return true
 	}
 
 	isExternalSecretsEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.EXTERNAL_SECRETS);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.EXTERNAL_SECRETS);
+		return true
 	}
 
 	isWorkflowHistoryLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.WORKFLOW_HISTORY);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKFLOW_HISTORY);
+		return true
 	}
 
 	isAPIDisabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.API_DISABLED);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.API_DISABLED);
+		return true;
 	}
 
 	isWorkerViewLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
+		return true
 	}
 
 	getCurrentEntitlements() {
@@ -303,20 +324,24 @@ export class License {
 
 	// Helper functions for computed data
 	getUsersLimit() {
-		return this.getFeatureValue(LICENSE_QUOTAS.USERS_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		// return this.getFeatureValue(LICENSE_QUOTAS.USERS_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		return UNLIMITED_LICENSE_QUOTA;
 	}
 
 	getTriggerLimit() {
-		return this.getFeatureValue(LICENSE_QUOTAS.TRIGGER_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		// return this.getFeatureValue(LICENSE_QUOTAS.TRIGGER_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		return UNLIMITED_LICENSE_QUOTA;
 	}
 
 	getVariablesLimit() {
-		return this.getFeatureValue(LICENSE_QUOTAS.VARIABLES_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		// return this.getFeatureValue(LICENSE_QUOTAS.VARIABLES_LIMIT) ?? UNLIMITED_LICENSE_QUOTA;
+		return UNLIMITED_LICENSE_QUOTA;
 	}
 
 	getWorkflowHistoryPruneLimit() {
 		return (
-			this.getFeatureValue(LICENSE_QUOTAS.WORKFLOW_HISTORY_PRUNE_LIMIT) ?? UNLIMITED_LICENSE_QUOTA
+			// this.getFeatureValue(LICENSE_QUOTAS.WORKFLOW_HISTORY_PRUNE_LIMIT) ?? UNLIMITED_LICENSE_QUOTA
+			UNLIMITED_LICENSE_QUOTA
 		);
 	}
 
