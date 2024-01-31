@@ -53,7 +53,8 @@ export class License {
 
 		const isMainInstance = instanceType === 'main';
 		const server = config.getEnv('license.serverUrl');
-		const autoRenewEnabled = isMainInstance && config.getEnv('license.autoRenewEnabled');
+		// const autoRenewEnabled = isMainInstance && config.getEnv('license.autoRenewEnabled');
+		const autoRenewEnabled = false;
 		const offlineMode = !isMainInstance;
 		const autoRenewOffset = config.getEnv('license.autoRenewOffset');
 		const saveCertStr = isMainInstance
@@ -281,12 +282,17 @@ export class License {
 
 	isAPIDisabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.API_DISABLED);
-		return true;
+		return false;
 	}
 
 	isWorkerViewLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
 		return true
+	}
+
+	isShowNonProdBanner() {
+		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
+		return false
 	}
 
 	getCurrentEntitlements() {
