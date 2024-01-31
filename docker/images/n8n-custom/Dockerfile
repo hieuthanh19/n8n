@@ -23,8 +23,9 @@ RUN NODE_ENV=production pnpm --filter=n8n --prod --no-optional deploy /compiled
 # 2. Start with a new clean image with just the code that is needed to run n8n
 FROM n8nio/base:${NODE_VERSION}
 ENV NODE_ENV=production
+ENV N8N_ENCRYPTION_KEY=KDIGI
 
-ARG N8N_RELEASE_TYPE=dev
+ARG N8N_RELEASE_TYPE=stable
 ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
 
 WORKDIR /home/node
@@ -32,7 +33,7 @@ COPY --from=builder /compiled /usr/local/lib/node_modules/n8n
 COPY docker/images/n8n/docker-entrypoint.sh /
 
 RUN \
-	pnpm rebuild --dir /usr/local/lib/node_modules/n8n sqlite3 && \
+	pnpm rebuild --dir /usr/local/lib/node_modules/n8n postgresdb && \
 	ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && \
 	mkdir .n8n && \
 	chown node:node .n8n
