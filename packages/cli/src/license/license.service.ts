@@ -51,7 +51,7 @@ export class LicenseService {
 
 	async activateLicense(activationKey: string) {
 		try {
-			await this.license.activate(activationKey);
+			// await this.license.activate(activationKey);
 		} catch (e) {
 			const message = this.mapErrorMessage(e as LicenseError, 'activate');
 			throw new BadRequestError(message);
@@ -60,7 +60,7 @@ export class LicenseService {
 
 	async renewLicense() {
 		try {
-			await this.license.renew();
+			// await this.license.renew();
 		} catch (e) {
 			const message = this.mapErrorMessage(e as LicenseError, 'renew');
 			// not awaiting so as not to make the endpoint hang
