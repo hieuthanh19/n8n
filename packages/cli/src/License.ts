@@ -352,7 +352,7 @@ export class License {
 	}
 
 	getPlanName(): string {
-		return this.getFeatureValue('planName') ?? 'Community';
+		return this.getFeatureValue('planName') ?? 'KDIGI';
 	}
 
 	getInfo(): string {
