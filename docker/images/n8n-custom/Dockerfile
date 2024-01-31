@@ -24,6 +24,7 @@ RUN NODE_ENV=production pnpm --filter=n8n --prod --no-optional deploy /compiled
 FROM n8nio/base:${NODE_VERSION}
 ENV NODE_ENV=production
 ENV N8N_ENCRYPTION_KEY=KDIGI
+ENV N8N_DIAGNOSTICS_ENABLED=false
 
 ARG N8N_RELEASE_TYPE=stable
 ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
