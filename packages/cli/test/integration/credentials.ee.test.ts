@@ -1,6 +1,6 @@
 import { Container } from 'typedi';
 import type { SuperAgentTest } from 'supertest';
-import { In } from 'typeorm';
+import { In } from '@n8n/typeorm';
 import type { IUser } from 'n8n-workflow';
 
 import type { ListQuery } from '@/requests';
@@ -229,7 +229,7 @@ describe('GET /credentials/:id', () => {
 		expect(response2.statusCode).toBe(200);
 
 		validateMainCredentialData(response2.body.data);
-		expect(response2.body.data.data).toBeUndefined();
+		expect(response2.body.data.data).toBeDefined(); // Instance owners should be capable of editing all credentials
 		expect(response2.body.data.sharedWith).toHaveLength(1);
 	});
 
