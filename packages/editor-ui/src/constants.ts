@@ -466,7 +466,6 @@ export const enum VIEWS {
 	EXTERNAL_SECRETS_SETTINGS = 'ExternalSecretsSettings',
 	SAML_ONBOARDING = 'SamlOnboarding',
 	SOURCE_CONTROL = 'SourceControl',
-	AUDIT_LOGS = 'AuditLogs',
 	MFA_VIEW = 'MfaView',
 	WORKFLOW_HISTORY = 'WorkflowHistory',
 	WORKER_VIEW = 'WorkerView',
@@ -654,6 +653,20 @@ export const MFA_AUTHENTICATION_RECOVERY_CODE_INPUT_MAX_LENGTH = 36;
 
 export const NODE_TYPES_EXCLUDED_FROM_OUTPUT_NAME_APPEND = [FILTER_NODE_TYPE, SWITCH_NODE_TYPE];
 
+type ClearOutgoingConnectonsEvents = {
+	[nodeName: string]: {
+		parameterPaths: string[];
+		eventTypes: string[];
+	};
+};
+
+export const SHOULD_CLEAR_NODE_OUTPUTS: ClearOutgoingConnectonsEvents = {
+	[SWITCH_NODE_TYPE]: {
+		parameterPaths: ['parameters.rules.values'],
+		eventTypes: ['optionsOrderChanged'],
+	},
+};
+
 export const ALLOWED_HTML_ATTRIBUTES = ['href', 'name', 'target', 'title', 'class', 'id', 'style'];
 
 export const ALLOWED_HTML_TAGS = [
@@ -664,6 +677,8 @@ export const ALLOWED_HTML_TAGS = [
 	'a',
 	'br',
 	'i',
+	'ul',
+	'li',
 	'em',
 	'small',
 	'details',
@@ -750,7 +765,10 @@ export const MOUSE_EVENT_BUTTONS = {
 export const TEMPLATES_URLS = {
 	DEFAULT_API_HOST: 'https://api.n8n.io/api/',
 	BASE_WEBSITE_URL: 'https://n8n.io/workflows',
-	UTM_QUERY: 'utm_source=n8n_app&utm_medium=template_library',
+	UTM_QUERY: {
+		utm_source: 'n8n_app',
+		utm_medium: 'template_library',
+	},
 };
 
 export const ROLE = {

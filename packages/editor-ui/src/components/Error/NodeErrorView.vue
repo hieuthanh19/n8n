@@ -22,6 +22,7 @@ import { sanitizeHtml } from '@/utils/htmlUtils';
 import { useAIStore } from '@/stores/ai.store';
 import { MAX_DISPLAY_DATA_SIZE } from '@/constants';
 import VueMarkdown from 'vue-markdown-render';
+import type { BaseTextKey } from '@/plugins/i18n';
 
 const props = defineProps({
 	error: {
@@ -83,6 +84,10 @@ const n8nVersion = computed(() => {
 	return rootStore.versionCli + ` (${instanceType})`;
 });
 
+const hasManyInputItems = computed(() => {
+	return ndvStore.ndvInputData.length > 1;
+});
+
 const nodeDefaultName = computed(() => {
 	const node = props.error?.node;
 	if (!node) {
@@ -124,6 +129,15 @@ const prepareRawMessages = computed(() => {
 async function onDebugError() {
 	try {
 		isLoadingErrorDebugging.value = true;
+		telemetry.track(
+			'User clicked AI error helper button',
+			{
+				node_type: props.error.node?.type,
+				error_title: props.error.message,
+			},
+			{ withPostHog: true },
+		);
+
 		const { message } = await aiStore.debugError({ error: props.error });
 		errorDebuggingMessage.value = message;
 	} catch (error) {
@@ -188,6 +202,21 @@ function getErrorDescription(): string {
 				}),
 		);
 	}
+
+	if (props.error.context?.descriptionKey) {
+		const interpolate = {
+			nodeCause: props.error.context.nodeCause as string,
+			runIndex: (props.error.context.runIndex as string) ?? '0',
+			itemIndex: (props.error.context.itemIndex as string) ?? '0',
+		};
+		return sanitizeHtml(
+			i18n.baseText(
+				`nodeErrorView.description.${props.error.context.descriptionKey as string}` as BaseTextKey,
+				{ interpolate },
+			),
+		);
+	}
+
 	if (!props.error.context?.descriptionTemplate) {
 		return sanitizeHtml(props.error.description ?? '');
 	}
@@ -198,33 +227,48 @@ function getErrorDescription(): string {
 	);
 }
 
+function addItemIndexSuffix(message: string): string {
+	let itemIndexSuffix = '';
+
+	const ITEM_INDEX_SUFFIX_TEXT = '[item ';
+
+	if (
+		hasManyInputItems.value &&
+		!message.includes(ITEM_INDEX_SUFFIX_TEXT) &&
+		props.error?.context?.itemIndex !== undefined
+	) {
+		itemIndexSuffix = ` [item ${props.error.context.itemIndex}]`;
+	}
+
+	return message + itemIndexSuffix;
+}
+
 function getErrorMessage(): string {
 	const baseErrorMessage = '';
+	let message = '';
 
 	const isSubNodeError =
 		props.error.name === 'NodeOperationError' &&
 		(props.error as NodeOperationError).functionality === 'configuration-node';
 
 	if (isSubNodeError) {
-		const baseErrorMessageSubNode = i18n.baseText('nodeErrorView.errorSubNode', {
+		message = i18n.baseText('nodeErrorView.errorSubNode', {
 			interpolate: { node: props.error.node.name },
 		});
-		return baseErrorMessageSubNode;
+	} else if (
+		props.error.message === props.error.description ||
+		!props.error.context?.messageTemplate
+	) {
+		message = baseErrorMessage + props.error.message;
+	} else {
+		const parameterName = parameterDisplayName(props.error.context.parameter as string);
+
+		message =
+			baseErrorMessage +
+			(props.error.context.messageTemplate as string).replace(/%%PARAMETER%%/g, parameterName);
 	}
 
-	if (props.error.message === props.error.description) {
-		return baseErrorMessage;
-	}
-	if (!props.error.context?.messageTemplate) {
-		return baseErrorMessage + props.error.message;
-	}
-
-	const parameterName = parameterDisplayName(props.error.context.parameter as string);
-
-	return (
-		baseErrorMessage +
-		(props.error.context.messageTemplate as string).replace(/%%PARAMETER%%/g, parameterName)
-	);
+	return addItemIndexSuffix(message);
 }
 
 function parameterDisplayName(path: string, fullPath = true) {
@@ -397,7 +441,7 @@ function copySuccess() {
 				</N8nButton>
 			</div>
 			<div
-				v-if="error.description"
+				v-if="error.description || error.context?.descriptionKey"
 				class="node-error-view__header-description"
 				v-html="getErrorDescription()"
 			></div>
@@ -653,7 +697,7 @@ function copySuccess() {
 		align-items: center;
 		gap: var(--spacing-xs);
 		padding: var(--spacing-xs) var(--spacing-s) var(--spacing-3xs) var(--spacing-s);
-		color: var(--color-danger);
+		color: var(--color-ndv-output-error-message);
 		font-weight: var(--font-weight-bold);
 		font-size: var(--font-size-s);
 	}
@@ -661,6 +705,19 @@ function copySuccess() {
 	&__header-description {
 		padding: 0 var(--spacing-s) var(--spacing-3xs) var(--spacing-s);
 		font-size: var(--font-size-xs);
+
+		ul {
+			padding: var(--spacing-s) 0;
+			padding-left: var(--spacing-l);
+		}
+
+		code {
+			font-size: var(--font-size-xs);
+			color: var(--color-text-base);
+			background: var(--color-background-base);
+			padding: var(--spacing-5xs);
+			border-radius: var(--border-radius-base);
+		}
 	}
 
 	&__debugging {
