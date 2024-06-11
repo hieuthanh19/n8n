@@ -165,7 +165,9 @@ export default defineComponent({
 			return this.canUserAccessRouteByName(VIEWS.COMMUNITY_NODES);
 		},
 		canAccessApiSettings(): boolean {
-			return this.canUserAccessRouteByName(VIEWS.API_SETTINGS);
+			return (
+				this.settingsStore.isPublicApiEnabled && this.canUserAccessRouteByName(VIEWS.API_SETTINGS)
+			);
 		},
 		canAccessLdapSettings(): boolean {
 			return this.canUserAccessRouteByName(VIEWS.LDAP_SETTINGS);
@@ -190,11 +192,6 @@ export default defineComponent({
 		},
 		openUpdatesPanel() {
 			this.uiStore.openModal(VERSIONS_MODAL_KEY);
-		},
-		async navigateTo(routeName: (typeof VIEWS)[keyof typeof VIEWS]) {
-			if (this.$router.currentRoute.name !== routeName) {
-				await this.$router.push({ name: routeName });
-			}
 		},
 		async handleSelect(key: string) {
 			switch (key) {

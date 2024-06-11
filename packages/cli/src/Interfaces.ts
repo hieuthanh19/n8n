@@ -26,7 +26,7 @@ import type {
 	StartNodeData,
 } from 'n8n-workflow';
 
-import type { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
+import type { ActiveWorkflowManager } from '@/ActiveWorkflowManager';
 
 import type { WorkflowExecute } from 'n8n-core';
 
@@ -535,7 +535,8 @@ export interface IWorkflowExecutionDataProcess {
 	pushRef?: string;
 	startNodes?: StartNodeData[];
 	workflowData: IWorkflowBase;
-	userId: string;
+	userId?: string;
+	projectId?: string;
 }
 
 export interface IWorkflowExecuteProcess {
@@ -623,7 +624,6 @@ export interface PublicUser {
 	passwordResetToken?: string;
 	createdAt: Date;
 	isPending: boolean;
-	hasRecoveryCodesLeft: boolean;
 	role?: GlobalRole;
 	globalScopes?: Scope[];
 	signInType: AuthProviderType;
@@ -638,7 +638,7 @@ export interface N8nApp {
 	app: Application;
 	restEndpoint: string;
 	externalHooks: ExternalHooks;
-	activeWorkflowRunner: ActiveWorkflowRunner;
+	activeWorkflowManager: ActiveWorkflowManager;
 }
 
 export type UserSettings = Pick<User, 'id' | 'settings'>;

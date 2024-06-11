@@ -501,7 +501,7 @@ describe('Execution', () => {
 
 		workflowPage.getters.clearExecutionDataButton().should('be.visible');
 
-		cy.intercept('POST', '/rest/workflows/run').as('workflowRun');
+		cy.intercept('POST', '/rest/workflows/**/run').as('workflowRun');
 
 		workflowPage.getters
 			.canvasNodeByName('do something with them')
@@ -510,7 +510,7 @@ describe('Execution', () => {
 
 		cy.wait('@workflowRun').then((interception) => {
 			expect(interception.request.body).to.have.property('runData').that.is.an('object');
-			const expectedKeys = ['When clicking "Test workflow"', 'fetch 5 random users'];
+			const expectedKeys = ['When clicking ‘Test workflow’', 'fetch 5 random users'];
 
 			expect(Object.keys(interception.request.body.runData)).to.have.lengthOf(expectedKeys.length);
 			expect(interception.request.body.runData).to.include.all.keys(expectedKeys);
@@ -525,7 +525,7 @@ describe('Execution', () => {
 
 		workflowPage.getters.zoomToFitButton().click();
 
-		cy.intercept('POST', '/rest/workflows/run').as('workflowRun');
+		cy.intercept('POST', '/rest/workflows/**/run').as('workflowRun');
 
 		workflowPage.getters
 			.canvasNodeByName('If')
@@ -545,7 +545,7 @@ describe('Execution', () => {
 
 		workflowPage.getters.clearExecutionDataButton().should('be.visible');
 
-		cy.intercept('POST', '/rest/workflows/run').as('workflowRun');
+		cy.intercept('POST', '/rest/workflows/**/run').as('workflowRun');
 
 		workflowPage.getters
 			.canvasNodeByName('NoOp2')
@@ -576,7 +576,7 @@ describe('Execution', () => {
 			'My test workflow',
 		);
 
-		cy.intercept('POST', '/rest/workflows/run').as('workflowRun');
+		cy.intercept('POST', '/rest/workflows/**/run').as('workflowRun');
 
 		workflowPage.getters.zoomToFitButton().click();
 		workflowPage.getters.executeWorkflowButton().click();
@@ -599,7 +599,7 @@ describe('Execution', () => {
 			'My test workflow',
 		);
 
-		cy.intercept('POST', '/rest/workflows/run').as('workflowRun');
+		cy.intercept('POST', '/rest/workflows/**/run').as('workflowRun');
 
 		workflowPage.getters.zoomToFitButton().click();
 		workflowPage.getters.executeWorkflowButton().click();

@@ -8,7 +8,7 @@ import {
 	MAX_WORKFLOW_SIZE,
 	PIN_DATA_NODE_TYPES_DENYLIST,
 } from '@/constants';
-import { stringSizeInBytes } from '@/utils/typesUtils';
+import { stringSizeInBytes, toMegaBytes } from '@/utils/typesUtils';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 import type { INodeUi, IRunDataDisplayMode } from '@/Interface';
 import { useExternalHooks } from '@/composables/useExternalHooks';
@@ -28,7 +28,8 @@ export type PinDataSource =
 	| 'duplicate-node'
 	| 'add-nodes'
 	| 'context-menu'
-	| 'keyboard-shortcut';
+	| 'keyboard-shortcut'
+	| 'banner-link';
 
 export type UnpinDataSource =
 	| 'unpin-and-execute-modal'
@@ -157,19 +158,29 @@ export function usePinnedData(
 
 		if (newPinDataSize > MAX_PINNED_DATA_SIZE) {
 			toast.showError(
-				new Error(i18n.baseText('ndv.pinData.error.tooLarge.description')),
+				new Error(
+					i18n.baseText('ndv.pinData.error.tooLarge.description', {
+						interpolate: {
+							size: toMegaBytes(newPinDataSize),
+							limit: toMegaBytes(MAX_PINNED_DATA_SIZE),
+						},
+					}),
+				),
 				i18n.baseText('ndv.pinData.error.tooLarge.title'),
 			);
 
 			return false;
 		}
 
-		if (
-			stringSizeInBytes(workflowJson) + newPinDataSize >
-			MAX_WORKFLOW_SIZE - MAX_EXPECTED_REQUEST_SIZE
-		) {
+		const workflowSize = stringSizeInBytes(workflowJson) + newPinDataSize;
+		const limit = MAX_WORKFLOW_SIZE - MAX_EXPECTED_REQUEST_SIZE;
+		if (workflowSize > limit) {
 			toast.showError(
-				new Error(i18n.baseText('ndv.pinData.error.tooLargeWorkflow.description')),
+				new Error(
+					i18n.baseText('ndv.pinData.error.tooLargeWorkflow.description', {
+						interpolate: { size: toMegaBytes(workflowSize), limit: toMegaBytes(limit) },
+					}),
+				),
 				i18n.baseText('ndv.pinData.error.tooLargeWorkflow.title'),
 			);
 
@@ -242,7 +253,7 @@ export function usePinnedData(
 		onSetDataSuccess({ source });
 	}
 
-	function onUnsetData({ source }: { source: UnpinDataSource }) {
+	function onUnsetData({ source }: { source: PinDataSource | UnpinDataSource }) {
 		const targetNode = unref(node);
 		const runIndex = unref(options.runIndex);
 
@@ -255,7 +266,7 @@ export function usePinnedData(
 		});
 	}
 
-	function unsetData(source: UnpinDataSource): void {
+	function unsetData(source: PinDataSource | UnpinDataSource): void {
 		const targetNode = unref(node);
 		if (!targetNode) {
 			return;

@@ -145,7 +145,7 @@ export class WorkflowPage extends BasePage {
 		},
 		addInitialNodeToCanvas: (
 			nodeDisplayName: string,
-			opts?: { keepNdvOpen?: boolean; action?: string, isTrigger?: boolean},
+			opts?: { keepNdvOpen?: boolean; action?: string; isTrigger?: boolean },
 		) => {
 			this.getters.canvasPlusButton().click();
 			this.getters.nodeCreatorSearchBar().type(nodeDisplayName);
@@ -298,10 +298,13 @@ export class WorkflowPage extends BasePage {
 			this.getters.workflowNameInput().should('be.enabled');
 			this.getters.workflowNameInput().clear().type(name).type('{enter}');
 		},
-		activateWorkflow: () => {
-			cy.intercept('PATCH', '/rest/workflows/*').as('activateWorkflow');
+		clickWorkflowActivator: () => {
 			this.getters.activatorSwitch().find('input').first().should('be.enabled');
 			this.getters.activatorSwitch().click();
+		},
+		activateWorkflow: () => {
+			cy.intercept('PATCH', '/rest/workflows/*').as('activateWorkflow');
+			this.actions.clickWorkflowActivator();
 			cy.wait('@activateWorkflow');
 			cy.get('body').type('{esc}');
 		},
@@ -318,7 +321,6 @@ export class WorkflowPage extends BasePage {
 				this.getters.workflowTagsInput().type(tag);
 				this.getters.workflowTagsInput().type('{enter}');
 			});
-			cy.realPress('Tab');
 			// For a brief moment the Element UI tag component shows the tags as(+X) string
 			// so we need to wait for it to disappear
 			this.getters.workflowTagsContainer().should('not.contain', `+${tags.length}`);

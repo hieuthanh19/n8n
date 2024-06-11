@@ -75,7 +75,7 @@ export default defineComponent({
 			default: true,
 		},
 		tagSize: {
-			type: String,
+			type: String as PropType<'small' | 'medium'>,
 			default: 'small',
 			validator: (value: string): boolean => ['small', 'medium'].includes(value),
 		},
@@ -126,7 +126,7 @@ export default defineComponent({
 		onUpdateModelValue(name: string, value: unknown) {
 			this.values = {
 				...this.values,
-				[name]: value,
+				[name]: value as Validatable,
 			};
 			this.$emit('update', { name, value });
 			this.$emit('update:modelValue', this.values);
