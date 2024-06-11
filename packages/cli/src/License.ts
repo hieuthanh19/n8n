@@ -107,7 +107,7 @@ export class License {
 
 			await this.manager.initialize();
 
-			console.log('license manager: ', this.manager)
+			console.log('license manager: ', this.manager);
 		} catch (e: unknown) {
 			if (e instanceof Error) {
 				this.logger.error('Could not initialize license manager sdk', e);
@@ -135,7 +135,7 @@ export class License {
 			// const isMultiMainLicensed = _features[LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES] as
 			// 	| boolean
 			// 	| undefined;
-			const isMultiMainLicensed = true
+			const isMultiMainLicensed = true;
 
 			this.orchestrationService.setMultiMainSetupLicensed(isMultiMainLicensed ?? false);
 
@@ -242,62 +242,62 @@ export class License {
 
 	isLogStreamingEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.LOG_STREAMING);
-		return true
+		return true;
 	}
 
 	isLdapEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.LDAP);
-		return true
+		return true;
 	}
 
 	isSamlEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.SAML);
-		return true
+		return true;
 	}
 
 	isAdvancedExecutionFiltersEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_EXECUTION_FILTERS);
-		return true
+		return true;
 	}
 
 	isAdvancedPermissionsLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.ADVANCED_PERMISSIONS);
-		return true
+		return true;
 	}
 
 	isDebugInEditorLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.DEBUG_IN_EDITOR);
-		return true
+		return true;
 	}
 
 	isBinaryDataS3Licensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.BINARY_DATA_S3);
-		return true
+		return true;
 	}
 
 	isMultipleMainInstancesLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES);
-		return true
+		return true;
 	}
 
 	isVariablesEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.VARIABLES);
-		return true
+		return true;
 	}
 
 	isSourceControlLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.SOURCE_CONTROL);
-		return true
+		return true;
 	}
 
 	isExternalSecretsEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.EXTERNAL_SECRETS);
-		return true
+		return true;
 	}
 
 	isWorkflowHistoryLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKFLOW_HISTORY);
-		return true
+		return true;
 	}
 
 	isAPIDisabled() {
@@ -307,24 +307,27 @@ export class License {
 
 	isWorkerViewLicensed() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
-		return true
+		return true;
 	}
 
 	isShowNonProdBanner() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.WORKER_VIEW);
-		return false
+		return false;
 	}
 
 	isProjectRoleAdminLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_ADMIN);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_ADMIN);
+		return true;
 	}
 
 	isProjectRoleEditorLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_EDITOR);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_EDITOR);
+		return true;
 	}
 
 	isProjectRoleViewerLicensed() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_VIEWER);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.PROJECT_ROLE_VIEWER);
+		return true;
 	}
 
 	getCurrentEntitlements() {
@@ -384,7 +387,8 @@ export class License {
 	}
 
 	getTeamProjectLimit() {
-		return this.getFeatureValue(LICENSE_QUOTAS.TEAM_PROJECT_LIMIT) ?? 0;
+		// return this.getFeatureValue(LICENSE_QUOTAS.TEAM_PROJECT_LIMIT) ?? 0;
+		return UNLIMITED_LICENSE_QUOTA;
 	}
 
 	getPlanName(): string {
