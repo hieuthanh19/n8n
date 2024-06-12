@@ -45,20 +45,21 @@ export class License {
 	 * Whether this instance should renew the license - on init and periodically.
 	 */
 	private renewalEnabled(instanceType: N8nInstanceType) {
-		if (instanceType !== 'main') return false;
-
-		const autoRenewEnabled = config.getEnv('license.autoRenewEnabled');
-
-		/**
-		 * In multi-main setup, all mains start off with `unset` status and so renewal disabled.
-		 * On becoming leader or follower, each will enable or disable renewal, respectively.
-		 * This ensures the mains do not cause a 429 (too many requests) on license init.
-		 */
-		if (config.getEnv('multiMainSetup.enabled')) {
-			return autoRenewEnabled && config.getEnv('multiMainSetup.instanceType') === 'leader';
-		}
-
 		return false;
+		// if (instanceType !== 'main') return false;
+
+		// const autoRenewEnabled = config.getEnv('license.autoRenewEnabled');
+
+		// /**
+		//  * In multi-main setup, all mains start off with `unset` status and so renewal disabled.
+		//  * On becoming leader or follower, each will enable or disable renewal, respectively.
+		//  * This ensures the mains do not cause a 429 (too many requests) on license init.
+		//  */
+		// if (config.getEnv('multiMainSetup.enabled')) {
+		// 	return autoRenewEnabled && config.getEnv('multiMainSetup.instanceType') === 'leader';
+		// }
+
+		// return autoRenewEnabled;
 	}
 
 	async init(instanceType: N8nInstanceType = 'main', forceRecreate = false) {
