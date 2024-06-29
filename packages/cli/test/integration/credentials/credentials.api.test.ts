@@ -1,6 +1,7 @@
 import { Container } from 'typedi';
 import type { Scope } from '@sentry/node';
 import { Credentials } from 'n8n-core';
+import { randomString } from 'n8n-workflow';
 
 import type { ListQuery } from '@/requests';
 import type { User } from '@db/entities/User';
@@ -16,7 +17,6 @@ import {
 	randomCredentialPayload as payload,
 	randomCredentialPayload,
 	randomName,
-	randomString,
 } from '../shared/random';
 import {
 	saveCredential,
@@ -685,7 +685,7 @@ describe('POST /credentials', () => {
 			//
 			.expect(400, {
 				code: 400,
-				message: "You don't have the permissions to save the workflow in this project.",
+				message: "You don't have the permissions to save the credential in this project.",
 			});
 	});
 });

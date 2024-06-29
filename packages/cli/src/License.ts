@@ -86,6 +86,11 @@ export class License {
 		// 	? async () => await this.usageMetricsService.collectUsageMetrics()
 		// 	: async () => [];
 		const collectUsageMetrics = async () => [];
+		// const collectPassthroughData = isMainInstance
+		// 	? async () => await this.usageMetricsService.collectPassthroughData()
+		// 	: async () => ({});
+
+			const collectPassthroughData = async () => ({})
 
 		const renewalEnabled = this.renewalEnabled(instanceType);
 
@@ -103,6 +108,7 @@ export class License {
 				saveCertStr,
 				deviceFingerprint: () => this.instanceSettings.instanceId,
 				collectUsageMetrics,
+				collectPassthroughData,
 				onFeatureChange,
 			});
 

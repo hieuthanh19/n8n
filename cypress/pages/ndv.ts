@@ -1,5 +1,5 @@
-import { BasePage } from './base';
 import { getVisiblePopper, getVisibleSelect } from '../utils';
+import { BasePage } from './base';
 
 export class NDV extends BasePage {
 	getters = {
@@ -27,6 +27,7 @@ export class NDV extends BasePage {
 		nodeOutputHint: () => cy.getByTestId('ndv-output-run-node-hint'),
 		savePinnedDataButton: () =>
 			this.getters.runDataPaneHeader().find('button').filter(':visible').contains('Save'),
+		inputLabel: () => cy.getByTestId('input-label'),
 		outputTableRows: () => this.getters.outputDataContainer().find('table tr'),
 		outputTableHeaders: () => this.getters.outputDataContainer().find('table thead th'),
 		outputTableHeaderByText: (text: string) => this.getters.outputTableHeaders().contains(text),
@@ -78,6 +79,8 @@ export class NDV extends BasePage {
 		resourceLocatorErrorMessage: () => cy.getByTestId('rlc-error-container'),
 		resourceLocatorModeSelector: (paramName: string) =>
 			this.getters.resourceLocator(paramName).find('[data-test-id="rlc-mode-selector"]'),
+		resourceLocatorSearch: (paramName: string) =>
+			this.getters.resourceLocator(paramName).findChildByTestId('rlc-search'),
 		resourceMapperFieldsContainer: () => cy.getByTestId('mapping-fields-container'),
 		resourceMapperSelectColumn: () => cy.getByTestId('matching-column-select'),
 		resourceMapperRemoveFieldButton: (fieldName: string) =>
@@ -129,6 +132,10 @@ export class NDV extends BasePage {
 		nodeRunErrorIndicator: () => cy.getByTestId('node-run-info-danger'),
 		nodeRunErrorMessage: () => cy.getByTestId('node-error-message'),
 		nodeRunErrorDescription: () => cy.getByTestId('node-error-description'),
+		fixedCollectionParameter: (paramName: string) =>
+			cy.getByTestId(`fixed-collection-${paramName}`),
+		schemaViewNode: () => cy.getByTestId('run-data-schema-node'),
+		schemaViewNodeName: () => cy.getByTestId('run-data-schema-node-name'),
 	};
 
 	actions = {
@@ -158,12 +165,7 @@ export class NDV extends BasePage {
 			this.getters.pinnedDataEditor().click();
 			this.getters
 				.pinnedDataEditor()
-				.type(
-					`{selectall}{backspace}${pinnedData.replace(new RegExp('{', 'g'), '{{}')}`,
-					{
-						delay: 0,
-					},
-				);
+				.type(`{selectall}{backspace}${pinnedData.replace(new RegExp('{', 'g'), '{{}')}`);
 
 			this.actions.savePinnedData();
 		},
@@ -171,24 +173,21 @@ export class NDV extends BasePage {
 			this.getters.editPinnedDataButton().click();
 
 			this.getters.pinnedDataEditor().click();
-			this.getters
-				.pinnedDataEditor()
-				.type('{selectall}{backspace}', { delay: 0 })
-				.paste(JSON.stringify(data));
+			this.getters.pinnedDataEditor().type('{selectall}{backspace}').paste(JSON.stringify(data));
 
 			this.actions.savePinnedData();
 		},
 		clearParameterInput: (parameterName: string) => {
-			this.getters.parameterInput(parameterName).type(`{selectall}{backspace}`);
+			this.getters.parameterInput(parameterName).type('{selectall}{backspace}');
 		},
 		typeIntoParameterInput: (
 			parameterName: string,
 			content: string,
-			opts?: { parseSpecialCharSequences: boolean; delay?: number },
+			opts?: { parseSpecialCharSequences: boolean },
 		) => {
 			this.getters.parameterInput(parameterName).type(content, opts);
 		},
-		selectOptionInParameterDropdown: (parameterName: string, content: string) => {
+		selectOptionInParameterDropdown: (_: string, content: string) => {
 			getVisibleSelect().find('.option-headline').contains(content).click();
 		},
 		rename: (newName: string) => {
@@ -217,6 +216,9 @@ export class NDV extends BasePage {
 		selectInputNode: (nodeName: string) => {
 			this.getters.inputSelect().find('.el-select').click();
 			this.getters.inputOption().contains(nodeName).click();
+		},
+		expandSchemaViewNode: (nodeName: string) => {
+			this.getters.schemaViewNodeName().contains(nodeName).click();
 		},
 		addDefaultPinnedData: () => {
 			this.actions.editPinnedData();
@@ -275,18 +277,15 @@ export class NDV extends BasePage {
 		setInvalidExpression: ({
 			fieldName,
 			invalidExpression,
-			delay,
 		}: {
 			fieldName: string;
 			invalidExpression?: string;
-			delay?: number;
 		}) => {
 			this.actions.typeIntoParameterInput(fieldName, '=');
 			this.actions.typeIntoParameterInput(fieldName, invalidExpression ?? "{{ $('unknown')", {
 				parseSpecialCharSequences: false,
-				delay,
 			});
-			this.actions.validateExpressionPreview(fieldName, `node doesn't exist`);
+			this.actions.validateExpressionPreview(fieldName, "node doesn't exist");
 		},
 		openSettings: () => {
 			this.getters.nodeSettingsTab().click();
@@ -310,6 +309,9 @@ export class NDV extends BasePage {
 		},
 		expressionSelectPrevItem: () => {
 			this.getters.inlineExpressionEditorItemPrevButton().click();
+		},
+		addItemToFixedCollection: (paramName: string) => {
+			this.getters.fixedCollectionParameter(paramName).getByTestId('fixed-collection-add').click();
 		},
 	};
 }
