@@ -83,11 +83,11 @@ export class License {
 			? async (features: TFeatures) => await this.onFeatureChange(features)
 			: async () => {};
 		// const collectUsageMetrics = isMainInstance
-		// 	? async () => await this.usageMetricsService.collectUsageMetrics()
+		// 	? async () => await this.licenseMetricsService.collectUsageMetrics()
 		// 	: async () => [];
 		const collectUsageMetrics = async () => [];
 		// const collectPassthroughData = isMainInstance
-		// 	? async () => await this.usageMetricsService.collectPassthroughData()
+		// 	? async () => await this.licenseMetricsService.collectPassthroughData()
 		// 	: async () => ({});
 
 			const collectPassthroughData = async () => ({})
