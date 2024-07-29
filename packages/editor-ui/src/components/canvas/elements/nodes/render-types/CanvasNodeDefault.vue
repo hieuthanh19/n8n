@@ -6,9 +6,15 @@ import CanvasNodeDisabledStrikeThrough from './parts/CanvasNodeDisabledStrikeThr
 import CanvasNodeStatusIcons from '@/components/canvas/elements/nodes/render-types/parts/CanvasNodeStatusIcons.vue';
 import { useCanvasNode } from '@/composables/useCanvasNode';
 import { NODE_INSERT_SPACER_BETWEEN_INPUT_GROUPS } from '@/constants';
+import { N8nTooltip } from 'n8n-design-system';
+import type { CanvasNodeDefaultRender } from '@/types';
 
 const $style = useCssModule();
 const i18n = useI18n();
+
+const emit = defineEmits<{
+	'open:contextmenu': [event: MouseEvent];
+}>();
 
 const {
 	label,
@@ -21,13 +27,15 @@ const {
 	executionRunning,
 	hasRunData,
 	hasIssues,
-	renderOptions,
+	render,
 } = useCanvasNode();
 const { mainOutputs, nonMainInputs, requiredNonMainInputs } = useNodeConnections({
 	inputs,
 	outputs,
 	connections,
 });
+
+const renderOptions = computed(() => render.value.options as CanvasNodeDefaultRender['options']);
 
 const classes = computed(() => {
 	return {
@@ -75,11 +83,23 @@ const dataTestId = computed(() => {
 
 	return `canvas-${type}-node`;
 });
+
+function openContextMenu(event: MouseEvent) {
+	emit('open:contextmenu', event);
+}
 </script>
 
 <template>
-	<div :class="classes" :style="styles" :data-test-id="dataTestId">
+	<div :class="classes" :style="styles" :data-test-id="dataTestId" @contextmenu="openContextMenu">
 		<slot />
+		<N8nTooltip v-if="renderOptions.trigger" placement="bottom">
+			<template #content>
+				<span v-html="$locale.baseText('node.thisIsATriggerNode')" />
+			</template>
+			<div :class="$style.triggerIcon">
+				<FontAwesomeIcon icon="bolt" size="lg" />
+			</div>
+		</N8nTooltip>
 		<CanvasNodeStatusIcons :class="$style.statusIcons" />
 		<CanvasNodeDisabledStrikeThrough v-if="isDisabled" />
 		<div v-if="label" :class="$style.label">
@@ -91,12 +111,14 @@ const dataTestId = computed(() => {
 
 <style lang="scss" module>
 .node {
-	--canvas-node--height: calc(100px + max(0, var(--canvas-node--main-output-count, 1) - 4) * 50px);
-	--canvas-node--width: 100px;
+	--canvas-node--height: calc(96px + max(0, var(--canvas-node--main-output-count, 1) - 4) * 48px);
+	--canvas-node--width: 96px;
+	--canvas-node-border-width: 2px;
 	--configurable-node--min-input-count: 4;
-	--configurable-node--input-width: 65px;
+	--configurable-node--input-width: 64px;
 	--configurable-node--icon-offset: 40px;
 	--configurable-node--icon-size: 30px;
+	--trigger-node--border-radius: 36px;
 
 	height: var(--canvas-node--height);
 	width: var(--canvas-node--width);
@@ -104,19 +126,26 @@ const dataTestId = computed(() => {
 	align-items: center;
 	justify-content: center;
 	background: var(--canvas-node--background, var(--color-node-background));
-	border: 2px solid var(--canvas-node--border-color, var(--color-foreground-xdark));
+	border: var(--canvas-node-border-width) solid
+		var(--canvas-node--border-color, var(--color-foreground-xdark));
 	border-radius: var(--border-radius-large);
+
+	&.trigger {
+		border-radius: var(--trigger-node--border-radius) var(--border-radius-large)
+			var(--border-radius-large) var(--trigger-node--border-radius);
+	}
 
 	/**
 	 * Node types
 	 */
 
 	&.configuration {
-		--canvas-node--width: 75px;
-		--canvas-node--height: 75px;
+		--canvas-node--width: 76px;
+		--canvas-node--height: 76px;
 
 		background: var(--canvas-node--background, var(--node-type-supplemental-background));
-		border: 2px solid var(--canvas-node--border-color, var(--color-foreground-dark));
+		border: var(--canvas-node-border-width) solid
+			var(--canvas-node--border-color, var(--color-foreground-dark));
 		border-radius: 50px;
 
 		.statusIcons {
@@ -125,7 +154,7 @@ const dataTestId = computed(() => {
 	}
 
 	&.configurable {
-		--canvas-node--height: 100px;
+		--canvas-node--height: 96px;
 		--canvas-node--width: calc(
 			max(var(--configurable-node--input-count, 5), var(--configurable-node--min-input-count)) *
 				var(--configurable-node--input-width)
@@ -190,5 +219,13 @@ const dataTestId = computed(() => {
 	position: absolute;
 	bottom: var(--spacing-2xs);
 	right: var(--spacing-2xs);
+}
+
+.triggerIcon {
+	position: absolute;
+	right: 100%;
+	margin: auto;
+	color: var(--color-primary);
+	padding: var(--spacing-2xs);
 }
 </style>
