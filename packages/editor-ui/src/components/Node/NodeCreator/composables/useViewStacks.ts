@@ -36,8 +36,14 @@ import { useI18n } from '@/composables/useI18n';
 import { useKeyboardNavigation } from './useKeyboardNavigation';
 
 import { useNodeTypesStore } from '@/stores/nodeTypes.store';
-import type { INodeInputFilter, NodeConnectionType, Themed } from 'n8n-workflow';
+import {
+	AI_TRANSFORM_NODE_TYPE,
+	type INodeInputFilter,
+	type NodeConnectionType,
+	type Themed,
+} from 'n8n-workflow';
 import { useCanvasStore } from '@/stores/canvas.store';
+import { usePostHog } from '../../../../stores/posthog.store';
 
 interface ViewStack {
 	uuid?: string;
@@ -62,6 +68,7 @@ interface ViewStack {
 	searchItems?: SimplifiedNodeType[];
 	forceIncludeNodes?: string[];
 	mode?: 'actions' | 'nodes';
+	hideActions?: boolean;
 	baseFilter?: (item: INodeCreateElement) => boolean;
 	itemsMapper?: (item: INodeCreateElement) => INodeCreateElement;
 	panelClass?: string;
@@ -297,9 +304,16 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 			);
 		}
 
+		// Only add info field if the view does not have any filters (e.g.
+		let extendedInfo = {};
+		if (!filter?.nodes?.length && relatedAIView?.properties.info) {
+			extendedInfo = { info: relatedAIView?.properties.info };
+		}
+
 		await nextTick();
 		pushViewStack({
 			title: relatedAIView?.properties.title,
+			...extendedInfo,
 			rootView: AI_OTHERS_NODE_CREATOR_VIEW,
 			mode: 'nodes',
 			items: nodeCreatorStore.allNodeCreatorNodes,
@@ -331,6 +345,7 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 					subcategory: connectionType,
 				};
 			},
+			hideActions: true,
 			preventBack: true,
 		});
 	}
@@ -343,7 +358,14 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 
 		if (!stack?.items) {
 			const subcategory = stack?.subcategory ?? DEFAULT_SUBCATEGORY;
-			const itemsInSubcategory = itemsBySubcategory.value[subcategory];
+			let itemsInSubcategory = itemsBySubcategory.value[subcategory];
+
+			const aiEnabled = usePostHog().isAiEnabled();
+			if (!aiEnabled) {
+				itemsInSubcategory = itemsInSubcategory.filter(
+					(item) => item.key !== AI_TRANSFORM_NODE_TYPE,
+				);
+			}
 			const sections = stack.sections;
 
 			if (sections) {

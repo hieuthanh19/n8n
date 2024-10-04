@@ -1,14 +1,17 @@
-import { Logger } from '@/Logger';
-import config from '@/config';
-import { Service } from 'typedi';
-import { ConcurrencyQueue } from './concurrency-queue';
-import { UnknownExecutionModeError } from '@/errors/unknown-execution-mode.error';
-import { InvalidConcurrencyLimitError } from '@/errors/invalid-concurrency-limit.error';
-import { ExecutionRepository } from '@/databases/repositories/execution.repository';
 import type { WorkflowExecuteMode as ExecutionMode } from 'n8n-workflow';
-import type { IExecutingWorkflowData } from '@/Interfaces';
+import { Service } from 'typedi';
+
+import config from '@/config';
+import { ExecutionRepository } from '@/databases/repositories/execution.repository';
+import { InvalidConcurrencyLimitError } from '@/errors/invalid-concurrency-limit.error';
+import { UnknownExecutionModeError } from '@/errors/unknown-execution-mode.error';
+import { EventService } from '@/events/event.service';
+import type { IExecutingWorkflowData } from '@/interfaces';
+import { Logger } from '@/logging/logger.service';
+import type { LogMetadata } from '@/logging/types';
 import { Telemetry } from '@/telemetry';
-import { EventService } from '@/eventbus/event.service';
+
+import { ConcurrencyQueue } from './concurrency-queue';
 
 export const CLOUD_TEMP_PRODUCTION_LIMIT = 999;
 export const CLOUD_TEMP_REPORTABLE_THRESHOLDS = [5, 10, 20, 50, 100, 200];
@@ -53,22 +56,21 @@ export class ConcurrencyControlService {
 
 		this.isEnabled = true;
 
-		this.productionQueue.on('concurrency-check', ({ capacity }: { capacity: number }) => {
+		this.productionQueue.on('concurrency-check', ({ capacity }) => {
 			if (this.shouldReport(capacity)) {
-				void this.telemetry.track('User hit concurrency limit', {
+				this.telemetry.track('User hit concurrency limit', {
 					threshold: CLOUD_TEMP_PRODUCTION_LIMIT - capacity,
 				});
 			}
 		});
 
-		this.productionQueue.on('execution-throttled', ({ executionId }: { executionId: string }) => {
+		this.productionQueue.on('execution-throttled', ({ executionId }) => {
 			this.log('Execution throttled', { executionId });
 			this.eventService.emit('execution-throttled', { executionId });
 		});
 
-		this.productionQueue.on('execution-released', async (executionId: string) => {
+		this.productionQueue.on('execution-released', async (executionId) => {
 			this.log('Execution released', { executionId });
-			await this.executionRepository.resetStartedAt(executionId);
 		});
 	}
 
@@ -169,8 +171,8 @@ export class ConcurrencyControlService {
 		throw new UnknownExecutionModeError(mode);
 	}
 
-	private log(message: string, meta?: object) {
-		this.logger.debug(['[Concurrency Control]', message].join(' '), meta);
+	private log(message: string, metadata?: LogMetadata) {
+		this.logger.debug(['[Concurrency Control]', message].join(' '), metadata);
 	}
 
 	private shouldReport(capacity: number) {
