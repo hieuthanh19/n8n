@@ -342,7 +342,8 @@ export class License {
 	}
 
 	isCustomNpmRegistryEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.COMMUNITY_NODES_CUSTOM_REGISTRY);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.COMMUNITY_NODES_CUSTOM_REGISTRY);
+		return true
 	}
 
 	getCurrentEntitlements() {
