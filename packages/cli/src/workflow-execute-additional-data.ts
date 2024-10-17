@@ -6,6 +6,13 @@
 import type { PushType } from '@n8n/api-types';
 import { GlobalConfig } from '@n8n/config';
 import { WorkflowExecute } from 'n8n-core';
+import {
+	ApplicationError,
+	ErrorReporterProxy as ErrorReporter,
+	NodeOperationError,
+	Workflow,
+	WorkflowHooks,
+} from 'n8n-workflow';
 import type {
 	IDataObject,
 	IExecuteData,
@@ -28,13 +35,7 @@ import type {
 	ITaskDataConnections,
 	ExecuteWorkflowOptions,
 	IWorkflowExecutionDataProcess,
-} from 'n8n-workflow';
-import {
-	ApplicationError,
-	ErrorReporterProxy as ErrorReporter,
-	NodeOperationError,
-	Workflow,
-	WorkflowHooks,
+	EnvProviderState,
 } from 'n8n-workflow';
 import { Container } from 'typedi';
 
@@ -766,7 +767,7 @@ export async function getWorkflowData(
 /**
  * Executes the workflow with the given ID
  */
-async function executeWorkflow(
+export async function executeWorkflow(
 	workflowInfo: IExecuteWorkflowInfo,
 	additionalData: IWorkflowExecuteAdditionalData,
 	options: ExecuteWorkflowOptions,
@@ -798,7 +799,13 @@ async function executeWorkflow(
 	const runData = options.loadedRunData ?? (await getRunData(workflowData, options.inputData));
 
 	const executionId = await activeExecutions.add(runData);
-	await executionRepository.updateStatus(executionId, 'running');
+
+	/**
+	 * A subworkflow execution in queue mode is not enqueued, but rather runs in the
+	 * same worker process as the parent execution. Hence ensure the subworkflow
+	 * execution is marked as started as well.
+	 */
+	await executionRepository.setRunning(executionId);
 
 	Container.get(EventService).emit('workflow-pre-execute', { executionId, data: runData });
 
@@ -1002,6 +1009,7 @@ export async function getBase(
 			connectionInputData: INodeExecutionData[],
 			siblingParameters: INodeParameters,
 			mode: WorkflowExecuteMode,
+			envProviderState: EnvProviderState,
 			executeData?: IExecuteData,
 			defaultReturnRunIndex?: number,
 			selfData?: IDataObject,
@@ -1022,6 +1030,7 @@ export async function getBase(
 				connectionInputData,
 				siblingParameters,
 				mode,
+				envProviderState,
 				executeData,
 				defaultReturnRunIndex,
 				selfData,

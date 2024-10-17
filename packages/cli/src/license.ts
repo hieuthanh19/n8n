@@ -1,3 +1,4 @@
+import { GlobalConfig } from '@n8n/config';
 import type { TEntitlement, TFeatures, TLicenseBlock } from '@n8n_io/license-sdk';
 import { LicenseManager } from '@n8n_io/license-sdk';
 import { InstanceSettings, ObjectStoreService } from 'n8n-core';
@@ -37,7 +38,10 @@ export class License {
 		private readonly orchestrationService: OrchestrationService,
 		private readonly settingsRepository: SettingsRepository,
 		private readonly licenseMetricsService: LicenseMetricsService,
-	) {}
+		private readonly globalConfig: GlobalConfig,
+	) {
+		this.logger = this.logger.withScope('license');
+	}
 
 	/**
 	 * Whether this instance should renew the license - on init and periodically.
@@ -53,7 +57,7 @@ export class License {
 		 * On becoming leader or follower, each will enable or disable renewal, respectively.
 		 * This ensures the mains do not cause a 429 (too many requests) on license init.
 		 */
-		if (config.getEnv('multiMainSetup.enabled')) {
+		if (this.globalConfig.multiMainSetup.enabled) {
 			// return autoRenewEnabled && this.instanceSettings.isLeader;
 		}
 
@@ -115,9 +119,9 @@ export class License {
 
 			console.log('license manager: ', this.manager);
 			this.logger.debug('License initialized');
-		} catch (e: unknown) {
-			if (e instanceof Error) {
-				this.logger.error('Could not initialize license manager sdk', e);
+		} catch (error: unknown) {
+			if (error instanceof Error) {
+				this.logger.error('Could not initialize license manager sdk', { error });
 			}
 		}
 	}
@@ -140,7 +144,7 @@ export class License {
 	async onFeatureChange(_features: TFeatures): Promise<void> {
 		this.logger.debug('License feature change detected', _features);
 
-		if (config.getEnv('executions.mode') === 'queue' && config.getEnv('multiMainSetup.enabled')) {
+		if (config.getEnv('executions.mode') === 'queue' && this.globalConfig.multiMainSetup.enabled) {
 			// const isMultiMainLicensed = _features[LICENSE_FEATURES.MULTIPLE_MAIN_INSTANCES] as
 			// 	| boolean
 			// 	| undefined;
@@ -148,10 +152,7 @@ export class License {
 
 			this.orchestrationService.setMultiMainSetupLicensed(isMultiMainLicensed ?? false);
 
-			if (
-				this.orchestrationService.isMultiMainSetupEnabled &&
-				this.orchestrationService.isFollower
-			) {
+			if (this.orchestrationService.isMultiMainSetupEnabled && this.instanceSettings.isFollower) {
 				this.logger.debug(
 					'[Multi-main setup] Instance is follower, skipping sending of "reload-license" command...',
 				);
@@ -264,6 +265,10 @@ export class License {
 
 	isAiAssistantEnabled() {
 		return this.isFeatureEnabled(LICENSE_FEATURES.AI_ASSISTANT);
+	}
+
+	isAskAiEnabled() {
+		return this.isFeatureEnabled(LICENSE_FEATURES.ASK_AI);
 	}
 
 	isAdvancedExecutionFiltersEnabled() {
