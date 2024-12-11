@@ -3,7 +3,7 @@ import { InstanceSettings } from 'n8n-core';
 import { Service } from 'typedi';
 
 import config from '@/config';
-import { TIME } from '@/constants';
+import { Time } from '@/constants';
 import { Logger } from '@/logging/logger.service';
 import { Publisher } from '@/scaling/pubsub/publisher.service';
 import { RedisClientService } from '@/services/redis-client.service';
@@ -36,7 +36,7 @@ export class MultiMainSetup extends TypedEmitter<MultiMainEvents> {
 		private readonly globalConfig: GlobalConfig,
 	) {
 		super();
-		this.logger = this.logger.withScope('scaling');
+		this.logger = this.logger.scoped(['scaling', 'multi-main-setup']);
 	}
 
 	private leaderKey: string;
@@ -54,7 +54,7 @@ export class MultiMainSetup extends TypedEmitter<MultiMainEvents> {
 
 		this.leaderCheckInterval = setInterval(async () => {
 			await this.checkLeader();
-		}, this.globalConfig.multiMainSetup.interval * TIME.SECOND);
+		}, this.globalConfig.multiMainSetup.interval * Time.seconds.toMilliseconds);
 	}
 
 	async shutdown() {

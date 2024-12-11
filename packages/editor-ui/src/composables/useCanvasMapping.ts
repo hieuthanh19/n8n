@@ -33,6 +33,7 @@ import type {
 	ExecutionSummary,
 	IConnections,
 	INodeExecutionData,
+	INodeTypeDescription,
 	ITaskData,
 	Workflow,
 } from 'n8n-workflow';
@@ -40,6 +41,7 @@ import { NodeConnectionType, NodeHelpers, SEND_AND_WAIT_OPERATION } from 'n8n-wo
 import type { INodeUi } from '@/Interface';
 import {
 	CUSTOM_API_CALL_KEY,
+	FORM_NODE_TYPE,
 	STICKY_NODE_TYPE,
 	WAIT_NODE_TYPE,
 	WAIT_TIME_UNLIMITED,
@@ -47,6 +49,7 @@ import {
 import { sanitizeHtml } from '@/utils/htmlUtils';
 import { MarkerType } from '@vue-flow/core';
 import { useNodeHelpers } from './useNodeHelpers';
+import { getTriggerNodeServiceName } from '@/utils/nodeTypesUtils';
 
 export function useCanvasMapping({
 	nodes,
@@ -85,7 +88,7 @@ export function useCanvasMapping({
 		return {
 			type: CanvasNodeRenderType.Default,
 			options: {
-				trigger: nodeTypesStore.isTriggerNode(node.type),
+				trigger: isTriggerNodeById.value[node.id],
 				configuration: nodeTypesStore.isConfigNode(workflowObject.value, node, node.type),
 				configurable: nodeTypesStore.isConfigurableNode(workflowObject.value, node, node.type),
 				inputs: {
@@ -94,6 +97,7 @@ export function useCanvasMapping({
 				outputs: {
 					labelSize: nodeOutputLabelSizeById.value[node.id],
 				},
+				tooltip: nodeTooltipById.value[node.id],
 			},
 		};
 	}
@@ -116,10 +120,34 @@ export function useCanvasMapping({
 			}, {}) ?? {},
 	);
 
+	const nodeTypeDescriptionByNodeId = computed(() =>
+		nodes.value.reduce<Record<string, INodeTypeDescription | null>>((acc, node) => {
+			acc[node.id] = nodeTypesStore.getNodeType(node.type, node.typeVersion);
+			return acc;
+		}, {}),
+	);
+
+	const isTriggerNodeById = computed(() =>
+		nodes.value.reduce<Record<string, boolean>>((acc, node) => {
+			acc[node.id] = nodeTypesStore.isTriggerNode(node.type);
+			return acc;
+		}, {}),
+	);
+
+	const activeTriggerNodeCount = computed(
+		() =>
+			nodes.value.filter(
+				(node) =>
+					nodeTypeDescriptionByNodeId.value[node.id]?.eventTriggerDescription !== '' &&
+					isTriggerNodeById.value[node.id] &&
+					!node.disabled,
+			).length,
+	);
+
 	const nodeSubtitleById = computed(() => {
 		return nodes.value.reduce<Record<string, string>>((acc, node) => {
 			try {
-				const nodeTypeDescription = nodeTypesStore.getNodeType(node.type, node.typeVersion);
+				const nodeTypeDescription = nodeTypeDescriptionByNodeId.value[node.id];
 				if (!nodeTypeDescription) {
 					return acc;
 				}
@@ -139,7 +167,7 @@ export function useCanvasMapping({
 
 	const nodeInputsById = computed(() =>
 		nodes.value.reduce<Record<string, CanvasConnectionPort[]>>((acc, node) => {
-			const nodeTypeDescription = nodeTypesStore.getNodeType(node.type, node.typeVersion);
+			const nodeTypeDescription = nodeTypeDescriptionByNodeId.value[node.id];
 			const workflowObjectNode = workflowObject.value.getNode(node.name);
 
 			acc[node.id] =
@@ -202,7 +230,7 @@ export function useCanvasMapping({
 
 	const nodeOutputsById = computed(() =>
 		nodes.value.reduce<Record<string, CanvasConnectionPort[]>>((acc, node) => {
-			const nodeTypeDescription = nodeTypesStore.getNodeType(node.type, node.typeVersion);
+			const nodeTypeDescription = nodeTypeDescriptionByNodeId.value[node.id];
 			const workflowObjectNode = workflowObject.value.getNode(node.name);
 
 			acc[node.id] =
@@ -224,6 +252,37 @@ export function useCanvasMapping({
 	const nodePinnedDataById = computed(() =>
 		nodes.value.reduce<Record<string, INodeExecutionData[] | undefined>>((acc, node) => {
 			acc[node.id] = workflowsStore.pinDataByNodeName(node.name);
+			return acc;
+		}, {}),
+	);
+
+	const nodeTooltipById = computed(() =>
+		nodes.value.reduce<Record<string, string | undefined>>((acc, node) => {
+			const nodeTypeDescription = nodeTypeDescriptionByNodeId.value[node.id];
+			if (nodeTypeDescription && isTriggerNodeById.value[node.id]) {
+				if (
+					activeTriggerNodeCount.value !== 1 ||
+					!workflowsStore.isWorkflowRunning ||
+					!['new', 'unknown', 'waiting'].includes(nodeExecutionStatusById.value[node.id])
+				) {
+					return acc;
+				}
+
+				if ('eventTriggerDescription' in nodeTypeDescription) {
+					const nodeName = i18n.shortNodeType(nodeTypeDescription.name);
+					const { eventTriggerDescription } = nodeTypeDescription;
+					acc[node.id] = i18n
+						.nodeText()
+						.eventTriggerDescription(nodeName, eventTriggerDescription ?? '');
+				} else {
+					acc[node.id] = i18n.baseText('node.waitingForYouToCreateAnEventIn', {
+						interpolate: {
+							nodeType: nodeTypeDescription ? getTriggerNodeServiceName(nodeTypeDescription) : '',
+						},
+					});
+				}
+			}
+
 			return acc;
 		}, {}),
 	);
@@ -315,7 +374,7 @@ export function useCanvasMapping({
 			} else if (nodePinnedDataById.value[node.id]) {
 				acc[node.id] = false;
 			} else {
-				acc[node.id] = Object.keys(node?.issues ?? {}).length > 0;
+				acc[node.id] = nodeIssuesById.value[node.id].length > 0;
 			}
 
 			return acc;
@@ -350,6 +409,11 @@ export function useCanvasMapping({
 
 					if (node?.parameters.operation === SEND_AND_WAIT_OPERATION) {
 						acc[node.id] = i18n.baseText('node.theNodeIsWaitingUserInput');
+						return acc;
+					}
+
+					if (node?.type === FORM_NODE_TYPE) {
+						acc[node.id] = i18n.baseText('node.theNodeIsWaitingFormCall');
 						return acc;
 					}
 
@@ -501,7 +565,6 @@ export function useCanvasMapping({
 					data,
 					type,
 					label,
-					animated: data.status === 'running',
 					markerEnd: MarkerType.ArrowClosed,
 				};
 			},
@@ -509,30 +572,40 @@ export function useCanvasMapping({
 	});
 
 	function getConnectionData(connection: CanvasConnection): CanvasConnectionData {
-		const fromNode = nodes.value.find((node) => node.name === connection.data?.fromNodeName);
+		const { type, index } = parseCanvasConnectionHandleString(connection.sourceHandle);
+		const runDataTotal =
+			nodeExecutionRunDataOutputMapById.value[connection.source]?.[type]?.[index]?.total ?? 0;
 
 		let status: CanvasConnectionData['status'];
-		if (fromNode) {
-			const { type, index } = parseCanvasConnectionHandleString(connection.sourceHandle);
-			const runDataTotal =
-				nodeExecutionRunDataOutputMapById.value[fromNode.id]?.[type]?.[index]?.total ?? 0;
-
-			if (nodeExecutionRunningById.value[fromNode.id]) {
-				status = 'running';
-			} else if (
-				nodePinnedDataById.value[fromNode.id] &&
-				nodeExecutionRunDataById.value[fromNode.id]
-			) {
-				status = 'pinned';
-			} else if (nodeHasIssuesById.value[fromNode.id]) {
-				status = 'error';
-			} else if (runDataTotal > 0) {
-				status = 'success';
-			}
+		if (nodeExecutionRunningById.value[connection.source]) {
+			status = 'running';
+		} else if (
+			nodePinnedDataById.value[connection.source] &&
+			nodeExecutionRunDataById.value[connection.source]
+		) {
+			status = 'pinned';
+		} else if (nodeHasIssuesById.value[connection.source]) {
+			status = 'error';
+		} else if (runDataTotal > 0) {
+			status = 'success';
 		}
+
+		const maxConnections = [
+			...nodeInputsById.value[connection.source],
+			...nodeInputsById.value[connection.target],
+		]
+			.filter((port) => port.type === type)
+			.reduce<number | undefined>((acc, port) => {
+				if (port.maxConnections === undefined) {
+					return acc;
+				}
+
+				return Math.min(acc ?? Infinity, port.maxConnections);
+			}, undefined);
 
 		return {
 			...(connection.data as CanvasConnectionData),
+			...(maxConnections ? { maxConnections } : {}),
 			status,
 		};
 	}
@@ -549,19 +622,23 @@ export function useCanvasMapping({
 
 		if (nodePinnedDataById.value[fromNode.id]) {
 			const pinnedDataCount = nodePinnedDataById.value[fromNode.id]?.length ?? 0;
-			return i18n.baseText('ndv.output.items', {
-				adjustToNumber: pinnedDataCount,
-				interpolate: { count: String(pinnedDataCount) },
-			});
+			return pinnedDataCount > 0
+				? i18n.baseText('ndv.output.items', {
+						adjustToNumber: pinnedDataCount,
+						interpolate: { count: String(pinnedDataCount) },
+					})
+				: '';
 		} else if (nodeExecutionRunDataById.value[fromNode.id]) {
 			const { type, index } = parseCanvasConnectionHandleString(connection.sourceHandle);
 			const runDataTotal =
 				nodeExecutionRunDataOutputMapById.value[fromNode.id]?.[type]?.[index]?.total ?? 0;
 
-			return i18n.baseText('ndv.output.items', {
-				adjustToNumber: runDataTotal,
-				interpolate: { count: String(runDataTotal) },
-			});
+			return runDataTotal > 0
+				? i18n.baseText('ndv.output.items', {
+						adjustToNumber: runDataTotal,
+						interpolate: { count: String(runDataTotal) },
+					})
+				: '';
 		}
 
 		return '';
@@ -570,6 +647,8 @@ export function useCanvasMapping({
 	return {
 		additionalNodePropertiesById,
 		nodeExecutionRunDataOutputMapById,
+		nodeIssuesById,
+		nodeHasIssuesById,
 		connections: mappedConnections,
 		nodes: mappedNodes,
 	};

@@ -66,8 +66,12 @@ export const initErrorHandling = async () => {
 				},
 			}),
 		],
-		beforeSend(event, { originalException }) {
+		async beforeSend(event, { originalException }) {
 			if (!originalException) return null;
+
+			if (originalException instanceof Promise) {
+				originalException = await originalException.catch((error) => error as Error);
+			}
 
 			if (originalException instanceof AxiosError) return null;
 
@@ -84,6 +88,17 @@ export const initErrorHandling = async () => {
 				event.level = level;
 				if (extra) event.extra = { ...event.extra, ...extra };
 				if (tags) event.tags = { ...event.tags, ...tags };
+			}
+
+			if (
+				originalException instanceof Error &&
+				'cause' in originalException &&
+				originalException.cause instanceof Error &&
+				'level' in originalException.cause &&
+				originalException.cause.level === 'warning'
+			) {
+				// handle underlying errors propagating from dependencies like ai-assistant-sdk
+				return null;
 			}
 
 			if (originalException instanceof Error && originalException.stack) {

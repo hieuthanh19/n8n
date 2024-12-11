@@ -18,7 +18,6 @@ import { getPersonalizedNodeTypes } from '@/utils/userUtils';
 import { defineStore } from 'pinia';
 import { useRootStore } from '@/stores/root.store';
 import { usePostHog } from './posthog.store';
-import { useSettingsStore } from './settings.store';
 import { useUIStore } from './ui.store';
 import { useCloudPlanStore } from './cloudPlan.store';
 import * as mfaApi from '@/api/mfa';
@@ -29,6 +28,7 @@ import * as invitationsApi from '@/api/invitation';
 import { useNpsSurveyStore } from './npsSurvey.store';
 import { computed, ref } from 'vue';
 import { useTelemetry } from '@/composables/useTelemetry';
+import { useSettingsStore } from '@/stores/settings.store';
 
 const _isPendingUser = (user: IUserResponse | null) => !!user?.isPending;
 const _isInstanceOwner = (user: IUserResponse | null) => user?.role === ROLE.Owner;
@@ -49,6 +49,7 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 	const rootStore = useRootStore();
 	const settingsStore = useSettingsStore();
 	const cloudPlanStore = useCloudPlanStore();
+
 	const telemetry = useTelemetry();
 
 	// Composables
@@ -171,7 +172,7 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 	const loginWithCreds = async (params: {
 		email: string;
 		password: string;
-		mfaToken?: string;
+		mfaCode?: string;
 		mfaRecoveryCode?: string;
 	}) => {
 		const user = await usersApi.login(rootStore.restApiContext, params);
@@ -231,7 +232,7 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 		await usersApi.validatePasswordToken(rootStore.restApiContext, params);
 	};
 
-	const changePassword = async (params: { token: string; password: string; mfaToken?: string }) => {
+	const changePassword = async (params: { token: string; password: string; mfaCode?: string }) => {
 		await usersApi.changePassword(rootStore.restApiContext, params);
 	};
 
@@ -278,9 +279,8 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 	const inviteUsers = async (params: Array<{ email: string; role: InvitableRoleName }>) => {
 		const invitedUsers = await invitationsApi.inviteUsers(rootStore.restApiContext, params);
 		addUsers(
-			invitedUsers.map(({ user }, index) => ({
+			invitedUsers.map(({ user }) => ({
 				isPending: true,
-				globalRole: { name: params[index].role },
 				...user,
 			})),
 		);
@@ -316,11 +316,15 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 		return await mfaApi.getMfaQR(rootStore.restApiContext);
 	};
 
-	const verifyMfaToken = async (data: { token: string }) => {
-		return await mfaApi.verifyMfaToken(rootStore.restApiContext, data);
+	const verifyMfaCode = async (data: { mfaCode: string }) => {
+		return await mfaApi.verifyMfaCode(rootStore.restApiContext, data);
 	};
 
-	const enableMfa = async (data: { token: string }) => {
+	const canEnableMFA = async () => {
+		return await mfaApi.canEnableMFA(rootStore.restApiContext);
+	};
+
+	const enableMfa = async (data: { mfaCode: string }) => {
 		await mfaApi.enableMfa(rootStore.restApiContext, data);
 		if (currentUser.value) {
 			currentUser.value.mfaEnabled = true;
@@ -329,7 +333,7 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 
 	const disableMfa = async (mfaCode: string) => {
 		await mfaApi.disableMfa(rootStore.restApiContext, {
-			token: mfaCode,
+			mfaCode,
 		});
 
 		if (currentUser.value) {
@@ -347,8 +351,8 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 		}
 	};
 
-	const confirmEmail = async () => {
-		await cloudApi.confirmEmail(rootStore.restApiContext);
+	const sendConfirmationEmail = async () => {
+		await cloudApi.sendConfirmationEmail(rootStore.restApiContext);
 	};
 
 	const updateGlobalRole = async ({ id, newRoleName }: UpdateGlobalRolePayload) => {
@@ -400,11 +404,12 @@ export const useUsersStore = defineStore(STORES.USERS, () => {
 		submitPersonalizationSurvey,
 		showPersonalizationSurvey,
 		fetchMfaQR,
-		verifyMfaToken,
+		verifyMfaCode,
 		enableMfa,
 		disableMfa,
+		canEnableMFA,
 		fetchUserCloudAccount,
-		confirmEmail,
+		sendConfirmationEmail,
 		updateGlobalRole,
 		reset,
 	};

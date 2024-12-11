@@ -46,10 +46,16 @@ describe('findStartNodes', () => {
 		const node = createNodeData({ name: 'Basic Node' });
 		const graph = new DirectedGraph().addNode(node);
 
-		const startNodes = findStartNodes({ graph, trigger: node, destination: node });
+		const startNodes = findStartNodes({
+			graph,
+			trigger: node,
+			destination: node,
+			pinData: {},
+			runData: {},
+		});
 
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node);
 	});
 
 	//                 ►►
@@ -65,10 +71,16 @@ describe('findStartNodes', () => {
 
 		// if the trigger has no run data
 		{
-			const startNodes = findStartNodes({ graph, trigger, destination });
+			const startNodes = findStartNodes({
+				graph,
+				trigger,
+				destination,
+				pinData: {},
+				runData: {},
+			});
 
-			expect(startNodes).toHaveLength(1);
-			expect(startNodes[0]).toEqual(trigger);
+			expect(startNodes.size).toBe(1);
+			expect(startNodes).toContainEqual(trigger);
 		}
 
 		// if the trigger has run data
@@ -77,10 +89,16 @@ describe('findStartNodes', () => {
 				[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 			};
 
-			const startNodes = findStartNodes({ graph, trigger, destination, runData });
+			const startNodes = findStartNodes({
+				graph,
+				trigger,
+				destination,
+				runData,
+				pinData: {},
+			});
 
-			expect(startNodes).toHaveLength(1);
-			expect(startNodes[0]).toEqual(destination);
+			expect(startNodes.size).toBe(1);
+			expect(startNodes).toContainEqual(destination);
 		}
 	});
 
@@ -112,11 +130,17 @@ describe('findStartNodes', () => {
 		};
 
 		// ACT
-		const startNodes = findStartNodes({ graph, trigger, destination: node, runData });
+		const startNodes = findStartNodes({
+			graph,
+			trigger,
+			destination: node,
+			runData,
+			pinData: {},
+		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node);
 	});
 
 	//             ┌─────┐              ┌─────┐          ►►
@@ -153,12 +177,18 @@ describe('findStartNodes', () => {
 
 		{
 			// ACT
-			const startNodes = findStartNodes({ graph, trigger, destination: node4 });
+			const startNodes = findStartNodes({
+				graph,
+				trigger,
+				destination: node4,
+				pinData: {},
+				runData: {},
+			});
 
 			// ASSERT
-			expect(startNodes).toHaveLength(1);
+			expect(startNodes.size).toBe(1);
 			// no run data means the trigger is the start node
-			expect(startNodes[0]).toEqual(trigger);
+			expect(startNodes).toContainEqual(trigger);
 		}
 
 		{
@@ -172,11 +202,17 @@ describe('findStartNodes', () => {
 			};
 
 			// ACT
-			const startNodes = findStartNodes({ graph, trigger, destination: node4, runData });
+			const startNodes = findStartNodes({
+				graph,
+				trigger,
+				destination: node4,
+				runData,
+				pinData: {},
+			});
 
 			// ASSERT
-			expect(startNodes).toHaveLength(1);
-			expect(startNodes[0]).toEqual(node4);
+			expect(startNodes.size).toBe(1);
+			expect(startNodes).toContainEqual(node4);
 		}
 	});
 
@@ -208,11 +244,12 @@ describe('findStartNodes', () => {
 			runData: {
 				[trigger.name]: [toITaskData([{ data: { value: 1 }, outputIndex: 0 }])],
 			},
+			pinData: {},
 		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node);
 	});
 
 	//                     ►►
@@ -243,11 +280,12 @@ describe('findStartNodes', () => {
 			runData: {
 				[trigger.name]: [toITaskData([{ data: { value: 1 }, outputIndex: 1 }])],
 			},
+			pinData: {},
 		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node);
 	});
 
 	//                     ►►
@@ -283,11 +321,12 @@ describe('findStartNodes', () => {
 					]),
 				],
 			},
+			pinData: {},
 		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node);
 	});
 
 	//                     ►►
@@ -321,11 +360,12 @@ describe('findStartNodes', () => {
 				[node1.name]: [toITaskData([{ data: { value: 1 }, outputIndex: 0 }])],
 				[node2.name]: [toITaskData([{ data: { value: 1 }, outputIndex: 0 }])],
 			},
+			pinData: {},
 		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node3);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node3);
 	});
 
 	//                                    ►►
@@ -357,11 +397,12 @@ describe('findStartNodes', () => {
 				[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 				[node1.name]: [toITaskData([{ data: { value: 1 }, outputIndex: 1 }])],
 			},
+			pinData: {},
 		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node2);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node2);
 	});
 
 	//                              ►►
@@ -389,10 +430,16 @@ describe('findStartNodes', () => {
 		const pinData: IPinData = {};
 
 		// ACT
-		const startNodes = findStartNodes({ graph, trigger, destination: node2, runData, pinData });
+		const startNodes = findStartNodes({
+			graph,
+			trigger,
+			destination: node2,
+			runData,
+			pinData,
+		});
 
 		// ASSERT
-		expect(startNodes).toHaveLength(1);
-		expect(startNodes[0]).toEqual(node2);
+		expect(startNodes.size).toBe(1);
+		expect(startNodes).toContainEqual(node2);
 	});
 });
