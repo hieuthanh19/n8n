@@ -265,12 +265,12 @@ export class License {
 
 	isAiAssistantEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.AI_ASSISTANT);
-		return true;
+		return false;
 	}
 
 	isAskAiEnabled() {
 		// return this.isFeatureEnabled(LICENSE_FEATURES.ASK_AI);
-		return true;
+		return false;
 	}
 
 	isAdvancedExecutionFiltersEnabled() {
