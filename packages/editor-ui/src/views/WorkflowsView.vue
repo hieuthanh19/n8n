@@ -1,12 +1,18 @@
 <script lang="ts" setup>
-import { computed, onMounted, watch, ref } from 'vue';
+import { computed, onMounted, watch, ref, onBeforeUnmount } from 'vue';
 import ResourcesListLayout, {
-	type IResource,
-	type IFilters,
+	type Resource,
+	type BaseFilters,
 } from '@/components/layouts/ResourcesListLayout.vue';
 import WorkflowCard from '@/components/WorkflowCard.vue';
 import WorkflowTagsDropdown from '@/components/WorkflowTagsDropdown.vue';
-import { EnterpriseEditionFeature, MORE_ONBOARDING_OPTIONS_EXPERIMENT, VIEWS } from '@/constants';
+import {
+	EASY_AI_WORKFLOW_EXPERIMENT,
+	AI_CREDITS_EXPERIMENT,
+	EnterpriseEditionFeature,
+	VIEWS,
+	DEFAULT_WORKFLOW_PAGE_SIZE,
+} from '@/constants';
 import type { IUser, IWorkflowDb } from '@/Interface';
 import { useUIStore } from '@/stores/ui.store';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -15,12 +21,11 @@ import { useWorkflowsStore } from '@/stores/workflows.store';
 import { useSourceControlStore } from '@/stores/sourceControl.store';
 import { useTagsStore } from '@/stores/tags.store';
 import { useProjectsStore } from '@/stores/projects.store';
-import { useTemplatesStore } from '@/stores/templates.store';
 import { getResourcePermissions } from '@/permissions';
 import { usePostHog } from '@/stores/posthog.store';
 import { useDocumentTitle } from '@/composables/useDocumentTitle';
 import { useI18n } from '@/composables/useI18n';
-import { useRoute, useRouter } from 'vue-router';
+import { type LocationQueryRaw, useRoute, useRouter } from 'vue-router';
 import { useTelemetry } from '@/composables/useTelemetry';
 import {
 	N8nCard,
@@ -31,8 +36,29 @@ import {
 	N8nSelect,
 	N8nText,
 } from 'n8n-design-system';
-import { pickBy } from 'lodash-es';
 import ProjectHeader from '@/components/Projects/ProjectHeader.vue';
+import { getEasyAiWorkflowJson } from '@/utils/easyAiWorkflowUtils';
+import { useDebounce } from '@/composables/useDebounce';
+import { createEventBus } from 'n8n-design-system/utils';
+
+interface Filters extends BaseFilters {
+	status: string | boolean;
+	tags: string[];
+}
+
+const StatusFilter = {
+	ACTIVE: true,
+	DEACTIVATED: false,
+	ALL: '',
+};
+
+/** Maps sort values from the ResourcesListLayout component to values expected by workflows endpoint */
+const WORKFLOWS_SORT_MAP = {
+	lastUpdated: 'updatedAt:desc',
+	lastCreated: 'createdAt:desc',
+	nameAsc: 'name:asc',
+	nameDesc: 'name:desc',
+} as const;
 
 const i18n = useI18n();
 const route = useRoute();
@@ -44,22 +70,11 @@ const workflowsStore = useWorkflowsStore();
 const settingsStore = useSettingsStore();
 const posthogStore = usePostHog();
 const projectsStore = useProjectsStore();
-const templatesStore = useTemplatesStore();
 const telemetry = useTelemetry();
 const uiStore = useUIStore();
 const tagsStore = useTagsStore();
 const documentTitle = useDocumentTitle();
-
-interface Filters extends IFilters {
-	status: string | boolean;
-	tags: string[];
-}
-
-const StatusFilter = {
-	ACTIVE: true,
-	DEACTIVATED: false,
-	ALL: '',
-};
+const { callDebounced } = useDebounce();
 
 const loading = ref(false);
 const filters = ref<Filters>({
@@ -69,11 +84,37 @@ const filters = ref<Filters>({
 	tags: [],
 });
 
+const workflowListEventBus = createEventBus();
+
+const workflows = ref<IWorkflowDb[]>([]);
+
+const easyAICalloutVisible = ref(true);
+
+const currentPage = ref(1);
+const pageSize = ref(DEFAULT_WORKFLOW_PAGE_SIZE);
+const currentSort = ref('updatedAt:desc');
+
 const readOnlyEnv = computed(() => sourceControlStore.preferences.branchReadOnly);
 const currentUser = computed(() => usersStore.currentUser ?? ({} as IUser));
-const allWorkflows = computed(() => workflowsStore.allWorkflows as IResource[]);
 const isShareable = computed(
 	() => settingsStore.isEnterpriseFeatureEnabled[EnterpriseEditionFeature.Sharing],
+);
+
+const workflowResources = computed<Resource[]>(() =>
+	workflows.value.map((workflow) => ({
+		id: workflow.id,
+		name: workflow.name,
+		value: '',
+		active: workflow.active,
+		updatedAt: workflow.updatedAt.toString(),
+		createdAt: workflow.createdAt.toString(),
+		homeProject: workflow.homeProject,
+		scopes: workflow.scopes,
+		type: 'workflow',
+		sharedWithProjects: workflow.sharedWithProjects,
+		readOnly: !getResourcePermissions(workflow.scopes).workflow.update,
+		tags: workflow.tags,
+	})),
 );
 
 const statusFilterOptions = computed(() => [
@@ -91,27 +132,12 @@ const statusFilterOptions = computed(() => [
 	},
 ]);
 
-const userRole = computed(() => {
-	const role = usersStore.currentUserCloudInfo?.role;
-	if (role) return role;
-
-	const answers = usersStore.currentUser?.personalizationAnswers;
-	if (answers && 'role' in answers) {
-		return answers.role;
-	}
-
-	return undefined;
-});
-
-const isOnboardingExperimentEnabled = computed(() => {
-	return (
-		posthogStore.getVariant(MORE_ONBOARDING_OPTIONS_EXPERIMENT.name) ===
-		MORE_ONBOARDING_OPTIONS_EXPERIMENT.variant
-	);
-});
-
-const isSalesUser = computed(() => {
-	return ['Sales', 'sales-and-marketing'].includes(userRole.value || '');
+const showEasyAIWorkflowCallout = computed(() => {
+	const isEasyAIWorkflowExperimentEnabled =
+		posthogStore.getVariant(EASY_AI_WORKFLOW_EXPERIMENT.name) ===
+		EASY_AI_WORKFLOW_EXPERIMENT.variant;
+	const easyAIWorkflowOnboardingDone = usersStore.isEasyAIWorkflowOnboardingDone;
+	return isEasyAIWorkflowExperimentEnabled && !easyAIWorkflowOnboardingDone;
 });
 
 const projectPermissions = computed(() => {
@@ -130,30 +156,43 @@ const emptyListDescription = computed(() => {
 	}
 });
 
-const onFilter = (resource: IResource, newFilters: IFilters, matches: boolean): boolean => {
-	const iFilters = newFilters as Filters;
-	if (settingsStore.areTagsEnabled && iFilters.tags.length > 0) {
-		matches =
-			matches &&
-			iFilters.tags.every((tag) =>
-				(resource as IWorkflowDb).tags?.find((resourceTag) =>
-					typeof resourceTag === 'object'
-						? `${resourceTag.id}` === `${tag}`
-						: `${resourceTag}` === `${tag}`,
-				),
-			);
-	}
+watch(
+	() => route.params?.projectId,
+	async () => {
+		await initialize();
+	},
+);
 
-	if (newFilters.status !== '') {
-		matches = matches && (resource as IWorkflowDb).active === newFilters.status;
-	}
+// Lifecycle hooks
+onMounted(async () => {
+	documentTitle.set(i18n.baseText('workflows.heading'));
+	void usersStore.showPersonalizationSurvey();
 
-	return matches;
-};
+	workflowListEventBus.on('resource-moved', fetchWorkflows);
+	workflowListEventBus.on('workflow-duplicated', fetchWorkflows);
+});
+
+onBeforeUnmount(() => {
+	workflowListEventBus.off('resource-moved', fetchWorkflows);
+	workflowListEventBus.off('workflow-duplicated', fetchWorkflows);
+});
 
 // Methods
-const onFiltersUpdated = (newFilters: IFilters) => {
-	Object.assign(filters.value, newFilters);
+const onFiltersUpdated = async () => {
+	currentPage.value = 1;
+	saveFiltersOnQueryString();
+	await fetchWorkflows();
+};
+
+const onSearchUpdated = async (search: string) => {
+	currentPage.value = 1;
+	saveFiltersOnQueryString();
+	if (search) {
+		await callDebounced(fetchWorkflows, { debounceTime: 500, trailing: true });
+	} else {
+		// No need to debounce when clearing search
+		await fetchWorkflows();
+	}
 };
 
 const addWorkflow = () => {
@@ -169,61 +208,95 @@ const addWorkflow = () => {
 	trackEmptyCardClick('blank');
 };
 
-const getTemplateRepositoryURL = () => templatesStore.websiteTemplateRepositoryURL;
-
 const trackEmptyCardClick = (option: 'blank' | 'templates' | 'courses') => {
 	telemetry.track('User clicked empty page option', {
 		option,
-	});
-	if (option === 'templates' && isSalesUser.value) {
-		trackCategoryLinkClick('Sales');
-	}
-};
-
-const trackCategoryLinkClick = (category: string) => {
-	telemetry.track(`User clicked Browse ${category} Templates`, {
-		role: usersStore.currentUserCloudInfo?.role,
-		active_workflow_count: workflowsStore.activeWorkflows.length,
 	});
 };
 
 const initialize = async () => {
 	loading.value = true;
-	await Promise.all([
+	await setFiltersFromQueryString();
+	const [, workflowsPage] = await Promise.all([
 		usersStore.fetchUsers(),
-		workflowsStore.fetchAllWorkflows(route.params?.projectId as string | undefined),
+		fetchWorkflows(),
 		workflowsStore.fetchActiveWorkflows(),
 	]);
+	workflows.value = workflowsPage;
 	loading.value = false;
 };
 
-const onClickTag = (tagId: string) => {
+const setCurrentPage = async (page: number) => {
+	currentPage.value = page;
+	await fetchWorkflows();
+};
+
+const setPageSize = async (size: number) => {
+	pageSize.value = size;
+	await fetchWorkflows();
+};
+
+const fetchWorkflows = async () => {
+	loading.value = true;
+	const routeProjectId = route.params?.projectId as string | undefined;
+	const homeProjectFilter = filters.value.homeProject || undefined;
+
+	const fetchedWorkflows = await workflowsStore.fetchWorkflowsPage(
+		routeProjectId ?? homeProjectFilter,
+		currentPage.value,
+		pageSize.value,
+		currentSort.value,
+		{
+			name: filters.value.search || undefined,
+			active: filters.value.status ? Boolean(filters.value.status) : undefined,
+			tags: filters.value.tags.map((tagId) => tagsStore.tagsById[tagId]?.name),
+		},
+	);
+	workflows.value = fetchedWorkflows;
+	loading.value = false;
+	return fetchedWorkflows;
+};
+
+const onClickTag = async (tagId: string) => {
 	if (!filters.value.tags.includes(tagId)) {
 		filters.value.tags.push(tagId);
+		currentPage.value = 1;
+		saveFiltersOnQueryString();
+		await fetchWorkflows();
 	}
 };
 
 const saveFiltersOnQueryString = () => {
-	const query: { [key: string]: string } = {};
+	// Get current query parameters
+	const currentQuery = { ...route.query };
 
+	// Update filter parameters
 	if (filters.value.search) {
-		query.search = filters.value.search;
+		currentQuery.search = filters.value.search;
+	} else {
+		delete currentQuery.search;
 	}
 
 	if (typeof filters.value.status !== 'string') {
-		query.status = filters.value.status.toString();
+		currentQuery.status = filters.value.status.toString();
+	} else {
+		delete currentQuery.status;
 	}
 
 	if (filters.value.tags.length) {
-		query.tags = filters.value.tags.join(',');
+		currentQuery.tags = filters.value.tags.join(',');
+	} else {
+		delete currentQuery.tags;
 	}
 
 	if (filters.value.homeProject) {
-		query.homeProject = filters.value.homeProject;
+		currentQuery.homeProject = filters.value.homeProject;
+	} else {
+		delete currentQuery.homeProject;
 	}
 
 	void router.replace({
-		query: Object.keys(query).length ? query : undefined,
+		query: Object.keys(currentQuery).length ? currentQuery : undefined,
 	});
 };
 
@@ -232,41 +305,70 @@ function isValidProjectId(projectId: string) {
 }
 
 const setFiltersFromQueryString = async () => {
-	const { tags, status, search, homeProject } = route.query ?? {};
+	const newQuery: LocationQueryRaw = { ...route.query };
+	const { tags, status, search, homeProject, sort } = route.query ?? {};
 
-	const filtersToApply: { [key: string]: string | string[] | boolean } = {};
+	// Helper to check if string value is not empty
+	const isValidString = (value: unknown): value is string =>
+		typeof value === 'string' && value.trim().length > 0;
 
-	if (homeProject && typeof homeProject === 'string') {
+	// Handle home project
+	if (isValidString(homeProject)) {
 		await projectsStore.getAvailableProjects();
 		if (isValidProjectId(homeProject)) {
-			filtersToApply.homeProject = homeProject;
+			newQuery.homeProject = homeProject;
+			filters.value.homeProject = homeProject;
+		} else {
+			delete newQuery.homeProject;
 		}
+	} else {
+		delete newQuery.homeProject;
 	}
 
-	if (search && typeof search === 'string') {
-		filtersToApply.search = search;
+	// Handle search
+	if (isValidString(search)) {
+		newQuery.search = search;
+		filters.value.search = search;
+	} else {
+		delete newQuery.search;
 	}
 
-	if (tags && typeof tags === 'string') {
+	// Handle tags
+	if (isValidString(tags)) {
 		await tagsStore.fetchAll();
-		const currentTags = tagsStore.allTags.map((tag) => tag.id);
+		const validTags = tags
+			.split(',')
+			.filter((tag) => tagsStore.allTags.map((t) => t.id).includes(tag));
 
-		filtersToApply.tags = tags.split(',').filter((tag) => currentTags.includes(tag));
+		if (validTags.length) {
+			newQuery.tags = validTags.join(',');
+			filters.value.tags = validTags;
+		} else {
+			delete newQuery.tags;
+		}
+	} else {
+		delete newQuery.tags;
 	}
 
-	if (
-		status &&
-		typeof status === 'string' &&
-		[StatusFilter.ACTIVE.toString(), StatusFilter.DEACTIVATED.toString()].includes(status)
-	) {
-		filtersToApply.status = status === 'true';
+	// Handle status
+	const validStatusValues = [StatusFilter.ACTIVE.toString(), StatusFilter.DEACTIVATED.toString()];
+	if (isValidString(status) && validStatusValues.includes(status)) {
+		newQuery.status = status;
+		filters.value.status = status === 'true';
+	} else {
+		delete newQuery.status;
 	}
 
-	if (Object.keys(filtersToApply).length) {
-		Object.assign(filters.value, filtersToApply);
+	// Handle sort
+	if (isValidString(sort)) {
+		const newSort = WORKFLOWS_SORT_MAP[sort as keyof typeof WORKFLOWS_SORT_MAP] ?? 'updatedAt:desc';
+		newQuery.sort = sort;
+		currentSort.value = newSort;
+	} else {
+		delete newQuery.sort;
 	}
 
-	void router.replace({ query: pickBy(route.query) });
+	void router.replace({ query: newQuery });
 };
 
 sourceControlStore.$onAction(({ name, after }) => {
@@ -274,45 +376,119 @@ sourceControlStore.$onAction(({ name, after }) => {
 	after(async () => await initialize());
 });
 
-watch(filters, () => saveFiltersOnQueryString(), { deep: true });
+const openAIWorkflow = async (source: string) => {
+	dismissEasyAICallout();
+	telemetry.track(
+		'User clicked test AI workflow',
+		{
+			source,
+		},
+		{ withPostHog: true },
+	);
 
-watch(
-	() => route.params?.projectId,
-	async () => await initialize(),
-);
+	const isAiCreditsExperimentEnabled =
+		posthogStore.getVariant(AI_CREDITS_EXPERIMENT.name) === AI_CREDITS_EXPERIMENT.variant;
 
-onMounted(async () => {
-	documentTitle.set(i18n.baseText('workflows.heading'));
-	await setFiltersFromQueryString();
-	void usersStore.showPersonalizationSurvey();
-});
+	const easyAiWorkflowJson = getEasyAiWorkflowJson({
+		isInstanceInAiFreeCreditsExperiment: isAiCreditsExperimentEnabled,
+		withOpenAiFreeCredits: settingsStore.aiCreditsQuota,
+	});
+
+	await router.push({
+		name: VIEWS.TEMPLATE_IMPORT,
+		params: { id: easyAiWorkflowJson.meta.templateId },
+		query: { fromJson: 'true' },
+	});
+};
+
+const dismissEasyAICallout = () => {
+	easyAICalloutVisible.value = false;
+};
+
+const onSortUpdated = async (sort: string) => {
+	currentSort.value =
+		WORKFLOWS_SORT_MAP[sort as keyof typeof WORKFLOWS_SORT_MAP] ?? 'updatedAt:desc';
+	if (currentSort.value !== 'updatedAt:desc') {
+		void router.replace({ query: { ...route.query, sort } });
+	} else {
+		void router.replace({ query: { ...route.query, sort: undefined } });
+	}
+	await fetchWorkflows();
+};
+
+const onWorkflowActiveToggle = (data: { id: string; active: boolean }) => {
+	const workflow = workflows.value.find((w) => w.id === data.id);
+	if (!workflow) return;
+	workflow.active = data.active;
+};
 </script>
 
 <template>
 	<ResourcesListLayout
+		v-model:filters="filters"
 		resource-key="workflows"
-		:resources="allWorkflows"
-		:filters="filters"
-		:additional-filters-handler="onFilter"
+		type="list-paginated"
+		:resources="workflowResources"
 		:type-props="{ itemSize: 80 }"
 		:shareable="isShareable"
 		:initialize="initialize"
 		:disabled="readOnlyEnv || !projectPermissions.workflow.create"
-		:loading="loading"
+		:loading="false"
+		:resources-refreshing="loading"
+		:custom-page-size="10"
+		:total-items="workflowsStore.totalWorkflowCount"
+		:dont-perform-sorting-and-filtering="true"
 		@click:add="addWorkflow"
+		@update:search="onSearchUpdated"
+		@update:current-page="setCurrentPage"
+		@update:page-size="setPageSize"
 		@update:filters="onFiltersUpdated"
+		@sort="onSortUpdated"
 	>
 		<template #header>
 			<ProjectHeader />
 		</template>
-		<template #default="{ data, updateItemSize }">
+		<template #callout>
+			<N8nCallout
+				v-if="showEasyAIWorkflowCallout && easyAICalloutVisible"
+				theme="secondary"
+				icon="robot"
+				:class="$style['easy-ai-workflow-callout']"
+			>
+				{{ i18n.baseText('workflows.list.easyAI') }}
+				<template #trailingContent>
+					<div :class="$style['callout-trailing-content']">
+						<n8n-button
+							data-test-id="easy-ai-button"
+							size="small"
+							type="secondary"
+							@click="openAIWorkflow('callout')"
+						>
+							{{ i18n.baseText('generic.tryNow') }}
+						</n8n-button>
+						<N8nIcon
+							size="small"
+							icon="times"
+							:title="i18n.baseText('generic.dismiss')"
+							class="clickable"
+							@click="dismissEasyAICallout"
+						/>
+					</div>
+				</template>
+			</N8nCallout>
+		</template>
+		<template #item="{ item: data }">
 			<WorkflowCard
 				data-test-id="resources-list-item"
 				class="mb-2xs"
-				:data="data"
+				:data="data as IWorkflowDb"
+				:workflow-list-event-bus="workflowListEventBus"
 				:read-only="readOnlyEnv"
-				@expand:tags="updateItemSize(data)"
 				@click:tag="onClickTag"
+				@workflow:deleted="fetchWorkflows"
+				@workflow:moved="fetchWorkflows"
+				@workflow:duplicated="fetchWorkflows"
+				@workflow:active-toggle="onWorkflowActiveToggle"
 			/>
 		</template>
 		<template #empty>
@@ -326,7 +502,7 @@ onMounted(async () => {
 							: i18n.baseText('workflows.empty.heading.userNotSetup')
 					}}
 				</N8nHeading>
-				<N8nText v-if="!isOnboardingExperimentEnabled" size="large" color="text-base">
+				<N8nText size="large" color="text-base">
 					{{ emptyListDescription }}
 				</N8nText>
 			</div>
@@ -345,40 +521,18 @@ onMounted(async () => {
 						{{ i18n.baseText('workflows.empty.startFromScratch') }}
 					</N8nText>
 				</N8nCard>
-				<a
-					v-if="isSalesUser || isOnboardingExperimentEnabled"
-					href="https://docs.n8n.io/courses/#available-courses"
+				<N8nCard
+					v-if="showEasyAIWorkflowCallout"
 					:class="$style.emptyStateCard"
-					target="_blank"
+					hoverable
+					data-test-id="easy-ai-workflow-card"
+					@click="openAIWorkflow('empty')"
 				>
-					<N8nCard
-						hoverable
-						data-test-id="browse-sales-templates-card"
-						@click="trackEmptyCardClick('courses')"
-					>
-						<N8nIcon :class="$style.emptyStateCardIcon" icon="graduation-cap" />
-						<N8nText size="large" class="mt-xs" color="text-dark">
-							{{ i18n.baseText('workflows.empty.learnN8n') }}
-						</N8nText>
-					</N8nCard>
-				</a>
-				<a
-					v-if="isSalesUser || isOnboardingExperimentEnabled"
-					:href="getTemplateRepositoryURL()"
-					:class="$style.emptyStateCard"
-					target="_blank"
-				>
-					<N8nCard
-						hoverable
-						data-test-id="browse-sales-templates-card"
-						@click="trackEmptyCardClick('templates')"
-					>
-						<N8nIcon :class="$style.emptyStateCardIcon" icon="box-open" />
-						<N8nText size="large" class="mt-xs" color="text-dark">
-							{{ i18n.baseText('workflows.empty.browseTemplates') }}
-						</N8nText>
-					</N8nCard>
-				</a>
+					<N8nIcon :class="$style.emptyStateCardIcon" icon="robot" />
+					<N8nText size="large" class="mt-xs pl-2xs pr-2xs" color="text-dark">
+						{{ i18n.baseText('workflows.empty.easyAI') }}
+					</N8nText>
+				</N8nCard>
 			</div>
 		</template>
 		<template #filters="{ setKeyValue }">
@@ -428,6 +582,19 @@ onMounted(async () => {
 .actionsContainer {
 	display: flex;
 	justify-content: center;
+}
+
+.easy-ai-workflow-callout {
+	// Make the callout padding in line with workflow cards
+	margin-top: var(--spacing-xs);
+	padding-left: var(--spacing-s);
+	padding-right: var(--spacing-m);
+
+	.callout-trailing-content {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-m);
+	}
 }
 
 .emptyStateCard {

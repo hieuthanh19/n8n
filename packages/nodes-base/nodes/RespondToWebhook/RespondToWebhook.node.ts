@@ -1,4 +1,5 @@
-import type { Readable } from 'stream';
+import jwt from 'jsonwebtoken';
+import set from 'lodash/set';
 import type {
 	IDataObject,
 	IExecuteFunctions,
@@ -18,9 +19,9 @@ import {
 	CHAT_TRIGGER_NODE_TYPE,
 	WAIT_NODE_TYPE,
 } from 'n8n-workflow';
-import set from 'lodash/set';
-import jwt from 'jsonwebtoken';
-import { formatPrivateKey, generatePairedItemData } from '../../utils/utilities';
+import type { Readable } from 'stream';
+
+import { formatPrivateKey } from '../../utils/utilities';
 
 export class RespondToWebhook implements INodeType {
 	description: INodeTypeDescription = {
@@ -355,14 +356,12 @@ export class RespondToWebhook implements INodeType {
 				}
 			} else if (respondWith === 'jwt') {
 				try {
-					const { keyType, secret, algorithm, privateKey } = (await this.getCredentials(
-						'jwtAuth',
-					)) as {
+					const { keyType, secret, algorithm, privateKey } = await this.getCredentials<{
 						keyType: 'passphrase' | 'pemKey';
 						privateKey: string;
 						secret: string;
 						algorithm: jwt.Algorithm;
-					};
+					}>('jwtAuth');
 
 					let secretOrPrivateKey;
 
@@ -444,11 +443,7 @@ export class RespondToWebhook implements INodeType {
 			this.sendResponse(response);
 		} catch (error) {
 			if (this.continueOnFail()) {
-				const itemData = generatePairedItemData(items.length);
-				const returnData = this.helpers.constructExecutionMetaData(
-					[{ json: { error: error.message } }],
-					{ itemData },
-				);
+				const returnData = [{ json: { error: error.message } }];
 				return [returnData];
 			}
 

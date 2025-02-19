@@ -1,15 +1,14 @@
-import { URL } from 'url';
 import type {
 	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IPairedItemData,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
-
 import Parser from 'rss-parser';
-import { generatePairedItemData } from '../../utils/utilities';
+import { URL } from 'url';
 
 // Utility function
 
@@ -35,6 +34,7 @@ export class RssFeedRead implements INodeType {
 			name: 'RSS Read',
 			color: '#b02020',
 		},
+		usableAsTool: true,
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		properties: [
@@ -76,7 +76,7 @@ export class RssFeedRead implements INodeType {
 		if (nodeVersion >= 1.1) {
 			itemsLength = items.length;
 		} else {
-			fallbackPairedItems = generatePairedItemData(items.length);
+			fallbackPairedItems = [] as IPairedItemData[];
 		}
 
 		for (let i = 0; i < itemsLength; i++) {

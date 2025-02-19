@@ -1,6 +1,6 @@
 import { useRootStore } from '@/stores/root.store';
 import { useSettingsStore } from '@/stores/settings.store';
-import { useDeviceSupport } from 'n8n-design-system';
+import { useDeviceSupport } from '@n8n/composables/useDeviceSupport';
 import type { WorkflowSettings } from 'n8n-workflow';
 
 type DebugInfo = {
@@ -96,12 +96,12 @@ export function useDebugInfo() {
 	};
 
 	const pruningInfo = () => {
-		if (!settingsStore.pruning.isEnabled) return { enabled: false } as const;
+		if (!settingsStore.pruning?.isEnabled) return { enabled: false } as const;
 
 		return {
 			enabled: true,
-			maxAge: `${settingsStore.pruning.maxAge} hours`,
-			maxCount: `${settingsStore.pruning.maxCount} executions`,
+			maxAge: `${settingsStore.pruning?.maxAge} hours`,
+			maxCount: `${settingsStore.pruning?.maxCount} executions`,
 		} as const;
 	};
 

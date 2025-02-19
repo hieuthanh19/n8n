@@ -1,3 +1,4 @@
+import glob from 'fast-glob';
 import {
 	NodeConnectionType,
 	type IExecuteFunctions,
@@ -5,9 +6,6 @@ import {
 	type INodeType,
 	type INodeTypeDescription,
 } from 'n8n-workflow';
-
-import glob from 'fast-glob';
-import { generatePairedItemData } from '../../utils/utilities';
 
 export class ReadBinaryFiles implements INodeType {
 	description: INodeTypeDescription = {
@@ -48,7 +46,6 @@ export class ReadBinaryFiles implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const fileSelector = this.getNodeParameter('fileSelector', 0) as string;
 		const dataPropertyName = this.getNodeParameter('dataPropertyName', 0);
-		const pairedItem = generatePairedItemData(this.getInputData().length);
 
 		const files = await glob(fileSelector);
 
@@ -60,7 +57,6 @@ export class ReadBinaryFiles implements INodeType {
 					[dataPropertyName]: await this.helpers.prepareBinaryData(stream, filePath),
 				},
 				json: {},
-				pairedItem,
 			});
 		}
 

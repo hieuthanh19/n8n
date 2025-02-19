@@ -14,7 +14,7 @@ import type { INodeProperties } from 'n8n-workflow';
 import { NodeConnectionType } from 'n8n-workflow';
 import { outputTheme } from './ExpressionEditorModal/theme';
 import ExpressionOutput from './InlineExpressionEditor/ExpressionOutput.vue';
-import RunDataSchema from './RunDataSchema.vue';
+import VirtualSchema from '@/components/VirtualSchema.vue';
 import OutputItemSelect from './InlineExpressionEditor/OutputItemSelect.vue';
 import { useI18n } from '@/composables/useI18n';
 import { useDebounce } from '@/composables/useDebounce';
@@ -167,14 +167,13 @@ const onResizeThrottle = useThrottleFn(onResize, 10);
 						</template>
 					</N8nInput>
 
-					<RunDataSchema
+					<VirtualSchema
 						:class="$style.schema"
 						:search="appliedSearch"
 						:nodes="parentNodes"
 						:mapping-enabled="!isReadOnly"
 						:connection-type="NodeConnectionType.Main"
 						pane-type="input"
-						context="modal"
 					/>
 				</div>
 			</N8nResizeWrapper>
@@ -246,7 +245,6 @@ const onResizeThrottle = useThrottleFn(onResize, 10);
 	margin-bottom: 0;
 
 	:global(.el-dialog__body) {
-		background-color: var(--color-expression-editor-modal-background);
 		height: 100%;
 		padding: var(--spacing-s);
 	}

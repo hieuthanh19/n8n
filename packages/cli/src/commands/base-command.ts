@@ -1,19 +1,16 @@
 import 'reflect-metadata';
 import { GlobalConfig } from '@n8n/config';
+import { Container } from '@n8n/di';
 import { Command, Errors } from '@oclif/core';
 import {
 	BinaryDataService,
 	InstanceSettings,
+	Logger,
 	ObjectStoreService,
 	DataDeduplicationService,
+	ErrorReporter,
 } from 'n8n-core';
-import {
-	ApplicationError,
-	ensureError,
-	ErrorReporterProxy as ErrorReporter,
-	sleep,
-} from 'n8n-workflow';
-import { Container } from 'typedi';
+import { ApplicationError, ensureError, sleep } from 'n8n-workflow';
 
 import type { AbstractServer } from '@/abstract-server';
 import config from '@/config';
@@ -22,22 +19,23 @@ import * as CrashJournal from '@/crash-journal';
 import * as Db from '@/db';
 import { getDataDeduplicationService } from '@/deduplication';
 import { DeprecationService } from '@/deprecation/deprecation.service';
-import { initErrorHandling } from '@/error-reporting';
+import { TestRunnerService } from '@/evaluation.ee/test-runner/test-runner.service.ee';
 import { MessageEventBus } from '@/eventbus/message-event-bus/message-event-bus';
 import { TelemetryEventRelay } from '@/events/relays/telemetry.event-relay';
 import { initExpressionEvaluator } from '@/expression-evaluator';
 import { ExternalHooks } from '@/external-hooks';
-import { ExternalSecretsManager } from '@/external-secrets/external-secrets-manager.ee';
+import { ExternalSecretsManager } from '@/external-secrets.ee/external-secrets-manager.ee';
 import { License } from '@/license';
 import { LoadNodesAndCredentials } from '@/load-nodes-and-credentials';
-import { Logger } from '@/logging/logger.service';
 import { NodeTypes } from '@/node-types';
 import { PostHogClient } from '@/posthog';
 import { ShutdownService } from '@/shutdown/shutdown.service';
-import { WorkflowHistoryManager } from '@/workflows/workflow-history/workflow-history-manager.ee';
+import { WorkflowHistoryManager } from '@/workflows/workflow-history.ee/workflow-history-manager.ee';
 
 export abstract class BaseCommand extends Command {
 	protected logger = Container.get(Logger);
+
+	protected errorReporter: ErrorReporter;
 
 	protected externalHooks?: ExternalHooks;
 
@@ -63,7 +61,16 @@ export abstract class BaseCommand extends Command {
 	protected needsCommunityPackages = false;
 
 	async init(): Promise<void> {
-		await initErrorHandling();
+		this.errorReporter = Container.get(ErrorReporter);
+
+		const { backendDsn, n8nVersion, environment, deploymentName } = this.globalConfig.sentry;
+		await this.errorReporter.init({
+			serverType: this.instanceSettings.instanceType,
+			dsn: backendDsn,
+			environment,
+			release: n8nVersion,
+			serverName: deploymentName,
+		});
 		initExpressionEvaluator();
 
 		process.once('SIGTERM', this.onTerminationSignal('SIGTERM'));
@@ -130,7 +137,7 @@ export abstract class BaseCommand extends Command {
 	}
 
 	protected async exitWithCrash(message: string, error: unknown) {
-		ErrorReporter.error(new Error(message, { cause: error }), { level: 'fatal' });
+		this.errorReporter.error(new Error(message, { cause: error }), { level: 'fatal' });
 		await sleep(2000);
 		process.exit(1);
 	}
@@ -183,42 +190,10 @@ export abstract class BaseCommand extends Command {
 	private async _initObjectStoreService(options = { isReadOnly: false }) {
 		const objectStoreService = Container.get(ObjectStoreService);
 
-		const { host, bucket, credentials } = this.globalConfig.externalStorage.s3;
-
-		if (host === '') {
-			throw new ApplicationError(
-				'External storage host not configured. Please set `N8N_EXTERNAL_STORAGE_S3_HOST`.',
-			);
-		}
-
-		if (bucket.name === '') {
-			throw new ApplicationError(
-				'External storage bucket name not configured. Please set `N8N_EXTERNAL_STORAGE_S3_BUCKET_NAME`.',
-			);
-		}
-
-		if (bucket.region === '') {
-			throw new ApplicationError(
-				'External storage bucket region not configured. Please set `N8N_EXTERNAL_STORAGE_S3_BUCKET_REGION`.',
-			);
-		}
-
-		if (credentials.accessKey === '') {
-			throw new ApplicationError(
-				'External storage access key not configured. Please set `N8N_EXTERNAL_STORAGE_S3_ACCESS_KEY`.',
-			);
-		}
-
-		if (credentials.accessSecret === '') {
-			throw new ApplicationError(
-				'External storage access secret not configured. Please set `N8N_EXTERNAL_STORAGE_S3_ACCESS_SECRET`.',
-			);
-		}
-
 		this.logger.debug('Initializing object store service');
 
 		try {
-			await objectStoreService.init(host, bucket, credentials);
+			await objectStoreService.init();
 			objectStoreService.setReadonly(options.isReadOnly);
 
 			this.logger.debug('Object store init completed');
@@ -283,6 +258,10 @@ export abstract class BaseCommand extends Command {
 
 	initWorkflowHistory() {
 		Container.get(WorkflowHistoryManager).init();
+	}
+
+	async cleanupTestRunner() {
+		await Container.get(TestRunnerService).cleanupIncompleteRuns();
 	}
 
 	async finally(error: Error | undefined) {

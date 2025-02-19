@@ -1,4 +1,5 @@
 import type {
+	ActionTypeDescription,
 	INodeCreateElement,
 	NodeCreateElement,
 	NodeFilterType,
@@ -6,6 +7,7 @@ import type {
 } from '@/Interface';
 import {
 	AI_CATEGORY_ROOT_NODES,
+	AI_CATEGORY_TOOLS,
 	AI_CODE_NODE_TYPE,
 	AI_NODE_CREATOR_VIEW,
 	AI_OTHERS_NODE_CREATOR_VIEW,
@@ -36,12 +38,8 @@ import { useI18n } from '@/composables/useI18n';
 import { useKeyboardNavigation } from './useKeyboardNavigation';
 
 import { useNodeTypesStore } from '@/stores/nodeTypes.store';
-import {
-	AI_TRANSFORM_NODE_TYPE,
-	type INodeInputFilter,
-	type NodeConnectionType,
-	type Themed,
-} from 'n8n-workflow';
+import { AI_TRANSFORM_NODE_TYPE } from 'n8n-workflow';
+import type { NodeConnectionType, INodeInputFilter, Themed } from 'n8n-workflow';
 import { useCanvasStore } from '@/stores/canvas.store';
 import { useSettingsStore } from '@/stores/settings.store';
 
@@ -71,6 +69,7 @@ interface ViewStack {
 	hideActions?: boolean;
 	baseFilter?: (item: INodeCreateElement) => boolean;
 	itemsMapper?: (item: INodeCreateElement) => INodeCreateElement;
+	actionsFilter?: (items: ActionTypeDescription[]) => ActionTypeDescription[];
 	panelClass?: string;
 	sections?: string[] | NodeViewItemSection[];
 }
@@ -207,8 +206,10 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 		return items.filter((node) => {
 			if (node.type !== 'node') return false;
 
-			return node.properties.codex?.subcategories?.[AI_SUBCATEGORY].includes(
-				AI_CATEGORY_ROOT_NODES,
+			const subcategories = node.properties.codex?.subcategories?.[AI_SUBCATEGORY] ?? [];
+			return (
+				subcategories.includes(AI_CATEGORY_ROOT_NODES) &&
+				!subcategories?.includes(AI_CATEGORY_TOOLS)
 			);
 		});
 	}
@@ -312,43 +313,54 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 		}
 
 		await nextTick();
-		pushViewStack({
-			title: relatedAIView?.properties.title,
-			...extendedInfo,
-			rootView: AI_OTHERS_NODE_CREATOR_VIEW,
-			mode: 'nodes',
-			items: nodeCreatorStore.allNodeCreatorNodes,
-			nodeIcon: {
-				iconType: 'icon',
-				icon: relatedAIView?.properties.icon,
-				color: relatedAIView?.properties.iconProps?.color,
-			},
-			panelClass: relatedAIView?.properties.panelClass,
-			baseFilter: (i: INodeCreateElement) => {
-				// AI Code node could have any connection type so we don't want to display it
-				// in the compatible connection view as it would be displayed in all of them
-				if (i.key === AI_CODE_NODE_TYPE) return false;
-				const displayNode = nodesByConnectionType[connectionType].includes(i.key);
 
-				// TODO: Filtering works currently fine for displaying compatible node when dropping
-				//       input connections. However, it does not work for output connections.
-				//       For that reason does it currently display nodes that are maybe not compatible
-				//       but then errors once it got selected by the user.
-				if (displayNode && filter?.nodes?.length) {
-					return filter.nodes.includes(i.key);
-				}
+		pushViewStack(
+			{
+				title: relatedAIView?.properties.title,
+				...extendedInfo,
+				rootView: AI_OTHERS_NODE_CREATOR_VIEW,
+				mode: 'nodes',
+				items: nodeCreatorStore.allNodeCreatorNodes,
+				nodeIcon: {
+					iconType: 'icon',
+					icon: relatedAIView?.properties.icon,
+					color: relatedAIView?.properties.iconProps?.color,
+				},
+				panelClass: relatedAIView?.properties.panelClass,
+				baseFilter: (i: INodeCreateElement) => {
+					// AI Code node could have any connection type so we don't want to display it
+					// in the compatible connection view as it would be displayed in all of them
+					if (i.key === AI_CODE_NODE_TYPE) return false;
+					const displayNode = nodesByConnectionType[connectionType].includes(i.key);
 
-				return displayNode;
+					// TODO: Filtering works currently fine for displaying compatible node when dropping
+					//       input connections. However, it does not work for output connections.
+					//       For that reason does it currently display nodes that are maybe not compatible
+					//       but then errors once it got selected by the user.
+					if (displayNode && filter?.nodes?.length) {
+						return filter.nodes.includes(i.key);
+					}
+
+					return displayNode;
+				},
+				itemsMapper(item) {
+					return {
+						...item,
+						subcategory: connectionType,
+					};
+				},
+				actionsFilter: (items: ActionTypeDescription[]) => {
+					// Filter out actions that are not compatible with the connection type
+					if (items.some((item) => item.outputConnectionType)) {
+						return items.filter((item) => item.outputConnectionType === connectionType);
+					}
+					return items;
+				},
+				hideActions: true,
+				preventBack: true,
 			},
-			itemsMapper(item) {
-				return {
-					...item,
-					subcategory: connectionType,
-				};
-			},
-			hideActions: true,
-			preventBack: true,
-		});
+			{ resetStacks: true },
+		);
 	}
 
 	function setStackBaselineItems() {
@@ -409,7 +421,11 @@ export const useViewStacks = defineStore('nodeCreatorViewStacks', () => {
 		}));
 	}
 
-	function pushViewStack(stack: ViewStack) {
+	function pushViewStack(stack: ViewStack, options: { resetStacks?: boolean } = {}) {
+		if (options.resetStacks) {
+			resetViewStacks();
+		}
+
 		if (activeViewStack.value.uuid) {
 			updateCurrentViewStack({ activeIndex: getActiveItemIndex() });
 		}

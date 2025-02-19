@@ -35,8 +35,6 @@ vi.mock('@/composables/useToast', () => {
 	};
 });
 
-vi.useFakeTimers();
-
 describe('usePushConnection()', () => {
 	let router: ReturnType<typeof useRouter>;
 	let pushStore: ReturnType<typeof usePushConnectionStore>;
@@ -202,7 +200,6 @@ describe('usePushConnection()', () => {
 					title: 'Problem in node ‘Last Node‘',
 					type: 'error',
 					duration: 0,
-					dangerouslyUseHTMLString: true,
 				});
 
 				expect(result).toBeTruthy();

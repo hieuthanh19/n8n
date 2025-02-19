@@ -50,6 +50,7 @@ describe('FormTrigger', () => {
 			appendAttribution: false,
 			buttonLabel: 'Submit',
 			formDescription: 'Test Description',
+			formDescriptionMetadata: 'Test Description',
 			formFields: [
 				{
 					defaultValue: '',
@@ -189,8 +190,9 @@ describe('FormTrigger', () => {
 			);
 
 			await expect(
-				testVersionedWebhookTriggerNode(FormTrigger, 2, {
+				testVersionedWebhookTriggerNode(FormTrigger, 2.1, {
 					node: {
+						typeVersion: 2.1,
 						parameters: {
 							responseMode: 'onReceived',
 						},
@@ -201,6 +203,7 @@ describe('FormTrigger', () => {
 							name: 'Test Respond To Webhook',
 							type: 'n8n-nodes-base.respondToWebhook',
 							typeVersion: 1,
+							disabled: false,
 						},
 					],
 				}),

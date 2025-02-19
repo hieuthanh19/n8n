@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
+import { v4 as uuid } from 'uuid';
 import LoadingView from '@/views/LoadingView.vue';
 import BannerStack from '@/components/banners/BannerStack.vue';
 import AskAssistantChat from '@/components/AskAssistant/AskAssistantChat.vue';
@@ -16,6 +17,11 @@ import { useUsersStore } from '@/stores/users.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useHistoryHelper } from '@/composables/useHistoryHelper';
 import { useStyles } from './composables/useStyles';
+
+// Polyfill crypto.randomUUID
+if (!('randomUUID' in crypto)) {
+	Object.defineProperty(crypto, 'randomUUID', { value: uuid });
+}
 
 const route = useRoute();
 const rootStore = useRootStore();
@@ -94,22 +100,22 @@ watch(defaultLocale, (newLocale) => {
 				<BannerStack v-if="!isDemoMode" />
 			</div>
 			<div id="header" :class="$style.header">
-				<router-view name="header"></router-view>
+				<RouterView name="header" />
 			</div>
 			<div v-if="usersStore.currentUser" id="sidebar" :class="$style.sidebar">
-				<router-view name="sidebar"></router-view>
+				<RouterView name="sidebar" />
 			</div>
 			<div id="content" :class="$style.content">
 				<div :class="$style.contentWrapper">
-					<router-view v-slot="{ Component }">
-						<keep-alive v-if="$route.meta.keepWorkflowAlive" include="NodeViewSwitcher" :max="1">
+					<RouterView v-slot="{ Component }">
+						<KeepAlive v-if="$route.meta.keepWorkflowAlive" include="NodeView" :max="1">
 							<component :is="Component" />
-						</keep-alive>
+						</KeepAlive>
 						<component :is="Component" v-else />
-					</router-view>
+					</RouterView>
 				</div>
 				<div v-if="hasContentFooter" :class="$style.contentFooter">
-					<router-view name="footer" />
+					<RouterView name="footer" />
 				</div>
 			</div>
 			<div :id="APP_MODALS_ELEMENT_ID" :class="$style.modals">
@@ -186,6 +192,8 @@ watch(defaultLocale, (newLocale) => {
 .header {
 	grid-area: header;
 	z-index: var(--z-index-app-header);
+	min-width: 0;
+	min-height: 0;
 }
 
 .sidebar {

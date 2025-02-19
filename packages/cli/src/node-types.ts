@@ -1,26 +1,22 @@
+import { GlobalConfig } from '@n8n/config';
+import { Service } from '@n8n/di';
 import type { NeededNodeType } from '@n8n/task-runner';
 import type { Dirent } from 'fs';
 import { readdir } from 'fs/promises';
-import { loadClassInIsolation } from 'n8n-core';
-import type {
-	INodeType,
-	INodeTypeDescription,
-	INodeTypes,
-	IVersionedNodeType,
-	LoadedClass,
-} from 'n8n-workflow';
+import { RoutingNode } from 'n8n-core';
+import type { ExecuteContext } from 'n8n-core';
+import type { INodeType, INodeTypeDescription, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
 import { ApplicationError, NodeHelpers } from 'n8n-workflow';
 import { join, dirname } from 'path';
-import { Service } from 'typedi';
 
-import { UnrecognizedNodeTypeError } from './errors/unrecognized-node-type.error';
 import { LoadNodesAndCredentials } from './load-nodes-and-credentials';
 
 @Service()
 export class NodeTypes implements INodeTypes {
-	constructor(private loadNodesAndCredentials: LoadNodesAndCredentials) {
-		loadNodesAndCredentials.addPostProcessor(async () => this.applySpecialNodeParameters());
-	}
+	constructor(
+		private readonly globalConfig: GlobalConfig,
+		private readonly loadNodesAndCredentials: LoadNodesAndCredentials,
+	) {}
 
 	/**
 	 * Variant of `getByNameAndVersion` that includes the node's source path, used to locate a node's translations.
@@ -29,31 +25,50 @@ export class NodeTypes implements INodeTypes {
 		nodeTypeName: string,
 		version: number,
 	): { description: INodeTypeDescription } & { sourcePath: string } {
-		const nodeType = this.getNode(nodeTypeName);
-
-		if (!nodeType) {
-			throw new ApplicationError('Unknown node type', { tags: { nodeTypeName } });
-		}
-
+		const nodeType = this.loadNodesAndCredentials.getNode(nodeTypeName);
 		const { description } = NodeHelpers.getVersionedNodeType(nodeType.type, version);
 
 		return { description: { ...description }, sourcePath: nodeType.sourcePath };
 	}
 
 	getByName(nodeType: string): INodeType | IVersionedNodeType {
-		return this.getNode(nodeType).type;
+		return this.loadNodesAndCredentials.getNode(nodeType).type;
 	}
 
 	getByNameAndVersion(nodeType: string, version?: number): INodeType {
 		const origType = nodeType;
-		const toolRequested = nodeType.startsWith('n8n-nodes-base') && nodeType.endsWith('Tool');
+
+		const { communityPackages } = this.globalConfig.nodes;
+		const allowToolUsage = communityPackages.allowToolUsage
+			? true
+			: nodeType.startsWith('n8n-nodes-base');
+		const toolRequested = nodeType.endsWith('Tool');
+
 		// Make sure the nodeType to actually get from disk is the un-wrapped type
-		if (toolRequested) {
+		if (allowToolUsage && toolRequested) {
 			nodeType = nodeType.replace(/Tool$/, '');
 		}
 
-		const node = this.getNode(nodeType);
+		const node = this.loadNodesAndCredentials.getNode(nodeType);
 		const versionedNodeType = NodeHelpers.getVersionedNodeType(node.type, version);
+		if (toolRequested && typeof versionedNodeType.supplyData === 'function') {
+			throw new ApplicationError('Node already has a `supplyData` method', { extra: { nodeType } });
+		}
+
+		if (
+			!versionedNodeType.execute &&
+			!versionedNodeType.poll &&
+			!versionedNodeType.trigger &&
+			!versionedNodeType.webhook &&
+			!versionedNodeType.methods
+		) {
+			versionedNodeType.execute = async function (this: ExecuteContext) {
+				const routingNode = new RoutingNode(this, versionedNodeType);
+				const data = await routingNode.runNode();
+				return data ?? [];
+			};
+		}
+
 		if (!toolRequested) return versionedNodeType;
 
 		if (!versionedNodeType.description.usableAsTool)
@@ -74,39 +89,13 @@ export class NodeTypes implements INodeTypes {
 		const clonedNode = Object.create(versionedNodeType, {
 			description: { value: clonedDescription },
 		}) as INodeType;
-		const tool = NodeHelpers.convertNodeToAiTool(clonedNode);
+		const tool = this.loadNodesAndCredentials.convertNodeToAiTool(clonedNode);
 		loadedNodes[nodeType + 'Tool'] = { sourcePath: '', type: tool };
 		return tool;
 	}
 
-	/* Some nodeTypes need to get special parameters applied like the polling nodes the polling times */
-	applySpecialNodeParameters() {
-		for (const nodeTypeData of Object.values(this.loadNodesAndCredentials.loadedNodes)) {
-			const nodeType = NodeHelpers.getVersionedNodeType(nodeTypeData.type);
-			NodeHelpers.applySpecialNodeParameters(nodeType);
-		}
-	}
-
 	getKnownTypes() {
 		return this.loadNodesAndCredentials.knownNodes;
-	}
-
-	private getNode(type: string): LoadedClass<INodeType | IVersionedNodeType> {
-		const { loadedNodes, knownNodes } = this.loadNodesAndCredentials;
-		if (type in loadedNodes) {
-			return loadedNodes[type];
-		}
-
-		if (type in knownNodes) {
-			const { className, sourcePath } = knownNodes[type];
-			const loaded: INodeType = loadClassInIsolation(sourcePath, className);
-			NodeHelpers.applySpecialNodeParameters(loaded);
-
-			loadedNodes[type] = { sourcePath, type: loaded };
-			return loadedNodes[type];
-		}
-
-		throw new UnrecognizedNodeTypeError(type);
 	}
 
 	async getNodeTranslationPath({
@@ -153,14 +142,12 @@ export class NodeTypes implements INodeTypes {
 
 	getNodeTypeDescriptions(nodeTypes: NeededNodeType[]): INodeTypeDescription[] {
 		return nodeTypes.map(({ name: nodeTypeName, version: nodeTypeVersion }) => {
-			const nodeType = this.getNode(nodeTypeName);
-
-			if (!nodeType) throw new ApplicationError(`Unknown node type: ${nodeTypeName}`);
-
+			const nodeType = this.loadNodesAndCredentials.getNode(nodeTypeName);
 			const { description } = NodeHelpers.getVersionedNodeType(nodeType.type, nodeTypeVersion);
 
 			const descriptionCopy = { ...description };
 
+			// TODO: do we still need this?
 			descriptionCopy.name = descriptionCopy.name.startsWith('n8n-nodes')
 				? descriptionCopy.name
 				: `n8n-nodes-base.${descriptionCopy.name}`; // nodes-base nodes are unprefixed

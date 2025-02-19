@@ -18,7 +18,7 @@ RUN find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "t
 
 # Deploy the `n8n` package into /compiled
 RUN mkdir /compiled
-RUN NODE_ENV=production DOCKER_BUILD=true pnpm --filter=n8n --prod --no-optional deploy /compiled
+RUN NODE_ENV=production DOCKER_BUILD=true pnpm --filter=n8n --prod --no-optional --legacy deploy /compiled
 
 # 2. Start with a new clean image with just the code that is needed to run n8n
 FROM n8nio/base:${NODE_VERSION}
@@ -35,7 +35,7 @@ COPY docker/images/n8n/docker-entrypoint.sh /
 
 # Setup the Task Runner Launcher
 ARG TARGETPLATFORM
-ARG LAUNCHER_VERSION=0.7.0-rc
+ARG LAUNCHER_VERSION=1.1.0
 COPY docker/images/n8n/n8n-task-runners.json /etc/n8n-task-runners.json
 # Download, verify, then extract the launcher binary
 RUN \

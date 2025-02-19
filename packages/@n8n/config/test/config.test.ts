@@ -1,6 +1,6 @@
+import { Container } from '@n8n/di';
 import fs from 'fs';
 import { mock } from 'jest-mock-extended';
-import { Container } from 'typedi';
 
 import { GlobalConfig } from '../src/index';
 
@@ -107,6 +107,9 @@ describe('GlobalConfig', () => {
 				maxFileSizeInKB: 10240,
 			},
 		},
+		externalHooks: {
+			files: [],
+		},
 		externalSecrets: {
 			preferGet: false,
 			updateInterval: 300,
@@ -116,6 +119,7 @@ describe('GlobalConfig', () => {
 				enabled: true,
 				registry: 'https://registry.npmjs.org',
 				reinstallMissing: false,
+				allowToolUsage: false,
 			},
 			errorTriggerType: 'n8n-nodes-base.errorTrigger',
 			include: [],
@@ -138,6 +142,7 @@ describe('GlobalConfig', () => {
 		externalStorage: {
 			s3: {
 				host: '',
+				protocol: 'https',
 				bucket: {
 					name: '',
 					region: '',
@@ -151,6 +156,7 @@ describe('GlobalConfig', () => {
 		workflows: {
 			defaultName: 'My workflow',
 			callerPolicyDefaultOption: 'workflowsFromSameOwner',
+			activationBatchSize: 1,
 		},
 		endpoints: {
 			metrics: {
@@ -209,6 +215,7 @@ describe('GlobalConfig', () => {
 					username: '',
 					clusterNodes: '',
 					tls: false,
+					dualStack: false,
 				},
 				gracefulShutdownTimeout: 30,
 				prefix: 'bull',
@@ -229,13 +236,16 @@ describe('GlobalConfig', () => {
 			maxPayload: 1024 * 1024 * 1024,
 			port: 5679,
 			maxOldSpaceSize: '',
-			maxConcurrency: 5,
-			taskTimeout: 60,
+			maxConcurrency: 10,
+			taskTimeout: 300,
 			heartbeatInterval: 30,
 		},
 		sentry: {
 			backendDsn: '',
 			frontendDsn: '',
+			n8nVersion: '',
+			environment: '',
+			deploymentName: '',
 		},
 		logging: {
 			level: 'info',
@@ -288,6 +298,16 @@ describe('GlobalConfig', () => {
 				apiKey: 'phc_4URIAm1uYfJO7j8kWSe0J8lc8IqnstRLS7Jx8NcakHo',
 				apiHost: 'https://ph.n8n.io',
 			},
+		},
+		aiAssistant: {
+			baseUrl: '',
+		},
+		tags: {
+			disabled: false,
+		},
+		partialExecutions: {
+			version: 1,
+			enforce: false,
 		},
 	};
 

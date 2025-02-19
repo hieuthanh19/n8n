@@ -3,7 +3,8 @@ import { createComponentRenderer } from '@/__tests__/render';
 import { createPinia, setActivePinia } from 'pinia';
 import { NodeConnectionType } from 'n8n-workflow';
 import { fireEvent } from '@testing-library/vue';
-import { createCanvasNodeProps, createCanvasProvide } from '@/__tests__/data';
+import { createCanvasNodeData, createCanvasNodeProps, createCanvasProvide } from '@/__tests__/data';
+import { CanvasNodeRenderType } from '@/types';
 
 vi.mock('@/stores/nodeTypes.store', () => ({
 	useNodeTypesStore: vi.fn(() => ({
@@ -84,6 +85,33 @@ describe('CanvasNode', () => {
 			expect(inputHandles.length).toBe(3);
 			expect(outputHandles.length).toBe(2);
 		});
+
+		it('should insert spacers after required non-main input handle', () => {
+			const { getAllByTestId } = renderComponent({
+				props: {
+					...createCanvasNodeProps({
+						data: {
+							inputs: [
+								{ type: NodeConnectionType.Main, index: 0 },
+								{ type: NodeConnectionType.AiAgent, index: 0, required: true },
+								{ type: NodeConnectionType.AiTool, index: 0 },
+							],
+							outputs: [],
+						},
+					}),
+				},
+				global: {
+					stubs: {
+						Handle: true,
+					},
+				},
+			});
+
+			const inputHandles = getAllByTestId('canvas-node-input-handle');
+
+			expect(inputHandles[1]).toHaveStyle('left: 20%');
+			expect(inputHandles[2]).toHaveStyle('left: 80%');
+		});
 	});
 
 	describe('toolbar', () => {
@@ -121,6 +149,32 @@ describe('CanvasNode', () => {
 			expect(() => getByTestId('disable-node-button')).toThrow();
 			expect(() => getByTestId('delete-node-button')).toThrow();
 			expect(getByTestId('overflow-node-button')).toBeInTheDocument();
+		});
+	});
+
+	describe('execute workflow button', () => {
+		const triggerNodeData = createCanvasNodeData({
+			name: 'foo',
+			render: {
+				type: CanvasNodeRenderType.Default,
+				options: { trigger: true },
+			},
+		});
+
+		it('should render execute workflow button if the node is a trigger node and is not read only', () => {
+			const { queryByTestId } = renderComponent({
+				props: createCanvasNodeProps({ readOnly: false, data: triggerNodeData }),
+			});
+
+			expect(queryByTestId('execute-workflow-button-foo')).toBeInTheDocument();
+		});
+
+		it('should not render execute workflow button if the node is a trigger node and is read only', () => {
+			const { queryByTestId } = renderComponent({
+				props: createCanvasNodeProps({ readOnly: true, data: triggerNodeData }),
+			});
+
+			expect(queryByTestId('execute-workflow-button-foo')).not.toBeInTheDocument();
 		});
 	});
 });

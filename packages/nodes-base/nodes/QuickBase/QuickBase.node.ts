@@ -10,19 +10,14 @@ import type {
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
-import { generatePairedItemData } from '../../utils/utilities';
+import { fieldFields, fieldOperations } from './FieldDescription';
+import { fileFields, fileOperations } from './FileDescription';
 import {
 	getFieldsObject,
 	quickbaseApiRequest,
 	quickbaseApiRequestAllItems,
 } from './GenericFunctions';
-
-import { fieldFields, fieldOperations } from './FieldDescription';
-
-import { fileFields, fileOperations } from './FileDescription';
-
 import { recordFields, recordOperations } from './RecordDescription';
-
 import { reportFields, reportOperations } from './ReportDescription';
 
 export class QuickBase implements INodeType {
@@ -38,6 +33,7 @@ export class QuickBase implements INodeType {
 		defaults: {
 			name: 'Quick Base',
 		},
+		usableAsTool: true,
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		credentials: [
@@ -117,7 +113,6 @@ export class QuickBase implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const itemData = generatePairedItemData(items.length);
 		const returnData: INodeExecutionData[] = [];
 		const length = items.length;
 		const qs: IDataObject = {};
@@ -295,10 +290,7 @@ export class QuickBase implements INodeType {
 					}
 				}
 
-				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData as IDataObject[]),
-					{ itemData },
-				);
+				const executionData = this.helpers.returnJsonArray(responseData as IDataObject[]);
 
 				returnData.push(...executionData);
 			}
@@ -465,10 +457,7 @@ export class QuickBase implements INodeType {
 					}
 				}
 
-				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData as IDataObject[]),
-					{ itemData },
-				);
+				const executionData = this.helpers.returnJsonArray(responseData as IDataObject[]);
 
 				returnData.push(...executionData);
 			}
@@ -548,10 +537,7 @@ export class QuickBase implements INodeType {
 					}
 				}
 
-				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData as IDataObject[]),
-					{ itemData },
-				);
+				const executionData = this.helpers.returnJsonArray(responseData as IDataObject[]);
 
 				returnData.push(...executionData);
 			}

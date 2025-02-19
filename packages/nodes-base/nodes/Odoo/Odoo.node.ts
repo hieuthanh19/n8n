@@ -1,3 +1,4 @@
+import { capitalCase } from 'change-case';
 import type {
 	IExecuteFunctions,
 	ICredentialsDecrypted,
@@ -13,7 +14,6 @@ import type {
 } from 'n8n-workflow';
 import { NodeConnectionType, deepCopy, randomInt } from 'n8n-workflow';
 
-import { capitalCase } from 'change-case';
 import {
 	contactDescription,
 	contactOperations,
@@ -24,7 +24,6 @@ import {
 	opportunityDescription,
 	opportunityOperations,
 } from './descriptions';
-
 import type { IOdooFilterOperations } from './GenericFunctions';
 import {
 	odooCreate,
@@ -51,6 +50,7 @@ export class Odoo implements INodeType {
 		defaults: {
 			name: 'Odoo',
 		},
+		usableAsTool: true,
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		credentials: [

@@ -13,8 +13,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import { getGoogleAccessToken } from '../../GenericFunctions';
-import { generatePairedItemData } from '../../../../utils/utilities';
+import { googleApiRequest, hexToRgb } from './GenericFunctions';
 import type {
 	ILookupValues,
 	ISheetUpdateData,
@@ -23,10 +22,8 @@ import type {
 	ValueRenderOption,
 } from './GoogleSheet';
 import { GoogleSheet } from './GoogleSheet';
-
-import { googleApiRequest, hexToRgb } from './GenericFunctions';
-
 import { versionDescription } from './versionDescription';
+import { getGoogleAccessToken } from '../../GenericFunctions';
 
 export class GoogleSheetsV1 implements INodeType {
 	description: INodeTypeDescription;
@@ -296,12 +293,9 @@ export class GoogleSheetsV1 implements INodeType {
 						returnData = [];
 					}
 
-					const pairedItem = generatePairedItemData(items.length);
-
 					const lookupOutput = returnData.map((item) => {
 						return {
 							json: item,
-							pairedItem,
 						};
 					});
 

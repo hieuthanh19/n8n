@@ -6,7 +6,8 @@ import { createPinia, setActivePinia } from 'pinia';
 import type { CanvasConnection, CanvasNode } from '@/types';
 import { createCanvasConnection, createCanvasNodeElement } from '@/__tests__/data';
 import { NodeConnectionType } from 'n8n-workflow';
-import type { useDeviceSupport } from 'n8n-design-system';
+import type { useDeviceSupport } from '@n8n/composables/useDeviceSupport';
+import { useVueFlow } from '@vue-flow/core';
 
 const matchMedia = global.window.matchMedia;
 // @ts-expect-error Initialize window object
@@ -18,12 +19,21 @@ vi.mock('n8n-design-system', async (importOriginal) => {
 	return { ...actual, useDeviceSupport: vi.fn(() => ({ isCtrlKeyPressed: vi.fn() })) };
 });
 
+const canvasId = 'canvas';
+
 let renderComponent: ReturnType<typeof createComponentRenderer>;
 beforeEach(() => {
 	const pinia = createPinia();
 	setActivePinia(pinia);
 
-	renderComponent = createComponentRenderer(Canvas, { pinia });
+	renderComponent = createComponentRenderer(Canvas, {
+		pinia,
+		props: {
+			id: canvasId,
+			nodes: [],
+			connections: [],
+		},
+	});
 });
 
 afterEach(() => {
@@ -86,7 +96,7 @@ describe('Canvas', () => {
 		expect(container.querySelector(`[data-id="${connections[0].id}"]`)).toBeInTheDocument();
 	});
 
-	it('should handle `update:nodes:position` event', async () => {
+	it('should emit `update:nodes:position` event', async () => {
 		const nodes = [createCanvasNodeElement()];
 		const { container, emitted } = renderComponent({
 			props: {
@@ -120,6 +130,55 @@ describe('Canvas', () => {
 				],
 			],
 		]);
+	});
+
+	it('should emit `update:node:name` event', async () => {
+		const nodes = [createCanvasNodeElement()];
+		const { container, emitted } = renderComponent({
+			props: {
+				nodes,
+			},
+		});
+
+		await waitFor(() => expect(container.querySelectorAll('.vue-flow__node')).toHaveLength(1));
+
+		const node = container.querySelector(`[data-id="${nodes[0].id}"]`) as Element;
+
+		const { addSelectedNodes, nodes: graphNodes } = useVueFlow({ id: canvasId });
+		addSelectedNodes(graphNodes.value);
+
+		await waitFor(() => expect(container.querySelector('.selected')).toBeInTheDocument());
+
+		await fireEvent.keyDown(node, { key: ' ', view: window });
+		await fireEvent.keyUp(node, { key: ' ', view: window });
+
+		expect(emitted()['update:node:name']).toEqual([['1']]);
+	});
+
+	it('should not emit `update:node:name` event if long key press', async () => {
+		vi.useFakeTimers();
+
+		const nodes = [createCanvasNodeElement()];
+		const { container, emitted } = renderComponent({
+			props: {
+				nodes,
+			},
+		});
+
+		await waitFor(() => expect(container.querySelectorAll('.vue-flow__node')).toHaveLength(1));
+
+		const node = container.querySelector(`[data-id="${nodes[0].id}"]`) as Element;
+
+		const { addSelectedNodes, nodes: graphNodes } = useVueFlow({ id: canvasId });
+		addSelectedNodes(graphNodes.value);
+
+		await waitFor(() => expect(container.querySelector('.selected')).toBeInTheDocument());
+
+		await fireEvent.keyDown(node, { key: ' ', view: window });
+		await vi.advanceTimersByTimeAsync(1000);
+		await fireEvent.keyUp(node, { key: ' ', view: window });
+
+		expect(emitted()['update:node:name']).toBeUndefined();
 	});
 
 	describe('minimap', () => {
@@ -200,13 +259,18 @@ describe('Canvas', () => {
 	describe('background', () => {
 		it('should render default background', () => {
 			const { container } = renderComponent();
-			expect(container.querySelector('#pattern-canvas')).toBeInTheDocument();
+			const patternCanvas = container.querySelector('#pattern-canvas');
+			expect(patternCanvas).toBeInTheDocument();
+			expect(patternCanvas?.innerHTML).toContain('<circle');
+			expect(patternCanvas?.innerHTML).not.toContain('<path');
 		});
 
 		it('should render striped background', () => {
 			const { container } = renderComponent({ props: { readOnly: true } });
-			expect(container.querySelector('#pattern-canvas')).not.toBeInTheDocument();
-			expect(container.querySelector('#diagonalHatch')).toBeInTheDocument();
+			const patternCanvas = container.querySelector('#pattern-canvas');
+			expect(patternCanvas).toBeInTheDocument();
+			expect(patternCanvas?.innerHTML).toContain('<path');
+			expect(patternCanvas?.innerHTML).not.toContain('<circle');
 		});
 	});
 });

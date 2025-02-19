@@ -5,6 +5,9 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
+
+import { processJsonInput, updateDisplayOptions } from '@utils/utilities';
+
 import type { ExcelResponse, UpdateSummary } from '../../helpers/interfaces';
 import {
 	checkRange,
@@ -14,7 +17,6 @@ import {
 } from '../../helpers/utils';
 import { microsoftApiRequest } from '../../transport';
 import { workbookRLC, worksheetRLC } from '../common.descriptions';
-import { generatePairedItemData, processJsonInput, updateDisplayOptions } from '@utils/utilities';
 
 const properties: INodeProperties[] = [
 	workbookRLC,
@@ -380,11 +382,7 @@ export async function execute(
 		);
 	} catch (error) {
 		if (this.continueOnFail()) {
-			const itemData = generatePairedItemData(this.getInputData().length);
-			const executionErrorData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray({ error: error.message }),
-				{ itemData },
-			);
+			const executionErrorData = this.helpers.returnJsonArray({ error: error.message });
 			returnData.push(...executionErrorData);
 		} else {
 			throw error;

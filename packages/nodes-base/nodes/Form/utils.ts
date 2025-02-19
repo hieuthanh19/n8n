@@ -1,3 +1,6 @@
+import type { Response } from 'express';
+import isbot from 'isbot';
+import { DateTime } from 'luxon';
 import type {
 	INodeExecutionData,
 	MultiPartFormData,
@@ -13,21 +16,72 @@ import {
 	WAIT_NODE_TYPE,
 	jsonParse,
 } from 'n8n-workflow';
+import sanitize from 'sanitize-html';
 
 import type { FormTriggerData, FormTriggerInput } from './interfaces';
 import { FORM_TRIGGER_AUTHENTICATION_PROPERTY } from './interfaces';
-
+import { getResolvables } from '../../utils/utilities';
 import { WebhookAuthorizationError } from '../Webhook/error';
 import { validateWebhookAuthentication } from '../Webhook/utils';
 
-import { DateTime } from 'luxon';
-import isbot from 'isbot';
-import type { Response } from 'express';
-import { getResolvables } from '../../utils/utilities';
+export function sanitizeHtml(text: string) {
+	return sanitize(text, {
+		allowedTags: [
+			'b',
+			'div',
+			'i',
+			'iframe',
+			'img',
+			'video',
+			'source',
+			'em',
+			'strong',
+			'a',
+			'h1',
+			'h2',
+			'h3',
+			'h4',
+			'h5',
+			'h6',
+			'u',
+			'sub',
+			'sup',
+			'code',
+			'pre',
+			'span',
+			'br',
+			'ul',
+			'ol',
+			'li',
+			'p',
+		],
+		allowedAttributes: {
+			a: ['href', 'target', 'rel'],
+			img: ['src', 'alt', 'width', 'height'],
+			video: ['*'],
+			iframe: ['*'],
+			source: ['*'],
+		},
+		transformTags: {
+			iframe: sanitize.simpleTransform('iframe', {
+				sandbox: '',
+				referrerpolicy: 'strict-origin-when-cross-origin',
+				allow: 'fullscreen; autoplay; encrypted-media',
+			}),
+		},
+	});
+}
+
+export function createDescriptionMetadata(description: string) {
+	return description === ''
+		? 'n8n form'
+		: description.replace(/^\s*\n+|<\/?[^>]+(>|$)/g, '').slice(0, 150);
+}
 
 export function prepareFormData({
 	formTitle,
 	formDescription,
+	formSubmittedHeader,
 	formSubmittedText,
 	redirectUrl,
 	formFields,
@@ -49,6 +103,7 @@ export function prepareFormData({
 	useResponseData?: boolean;
 	appendAttribution?: boolean;
 	buttonLabel?: string;
+	formSubmittedHeader?: string;
 }) {
 	const validForm = formFields.length > 0;
 	const utm_campaign = instanceId ? `&utm_campaign=${instanceId}` : '';
@@ -63,6 +118,8 @@ export function prepareFormData({
 		validForm,
 		formTitle,
 		formDescription,
+		formDescriptionMetadata: createDescriptionMetadata(formDescription),
+		formSubmittedHeader,
 		formSubmittedText,
 		n8nWebsiteLink,
 		formFields: [],
@@ -111,6 +168,14 @@ export function prepareFormData({
 			input.selectOptions = fieldOptions.map((e) => e.option);
 		} else if (fieldType === 'textarea') {
 			input.isTextarea = true;
+		} else if (fieldType === 'html') {
+			input.isHtml = true;
+			input.html = field.html as string;
+		} else if (fieldType === 'hiddenField') {
+			input.isHidden = true;
+			input.hiddenName = field.fieldName as string;
+			input.hiddenValue =
+				input.defaultValue === '' ? (field.fieldValue as string) : input.defaultValue;
 		} else {
 			input.isInput = true;
 			input.type = fieldType as 'text' | 'number' | 'date' | 'email';
@@ -122,9 +187,10 @@ export function prepareFormData({
 	return formData;
 }
 
-const checkResponseModeConfiguration = (context: IWebhookFunctions) => {
+export const validateResponseModeConfiguration = (context: IWebhookFunctions) => {
 	const responseMode = context.getNodeParameter('responseMode', 'onReceived') as string;
 	const connectedNodes = context.getChildNodes(context.getNode().name);
+	const nodeVersion = context.getNode().typeVersion;
 
 	const isRespondToWebhookConnected = connectedNodes.some(
 		(node) => node.type === 'n8n-nodes-base.respondToWebhook',
@@ -141,13 +207,26 @@ const checkResponseModeConfiguration = (context: IWebhookFunctions) => {
 		);
 	}
 
-	if (isRespondToWebhookConnected && responseMode !== 'responseNode') {
+	if (isRespondToWebhookConnected && responseMode !== 'responseNode' && nodeVersion <= 2.1) {
 		throw new NodeOperationError(
 			context.getNode(),
 			new Error(`${context.getNode().name} node not correctly configured`),
 			{
 				description:
 					'Set the “Respond When” parameter to “Using Respond to Webhook Node” or remove the Respond to Webhook node',
+			},
+		);
+	}
+
+	if (isRespondToWebhookConnected && nodeVersion > 2.1) {
+		throw new NodeOperationError(
+			context.getNode(),
+			new Error(
+				'The "Respond to Webhook" node is not supported in workflows initiated by the "n8n Form Trigger"',
+			),
+			{
+				description:
+					'To configure your response, add an "n8n Form" node and set the "Page Type" to "Form Ending"',
 			},
 		);
 	}
@@ -216,6 +295,13 @@ export async function prepareFormReturnItem(
 
 		if (value === null) {
 			returnItem.json[field.fieldLabel] = null;
+			continue;
+		}
+
+		if (field.fieldType === 'html') {
+			if (field.elementName) {
+				returnItem.json[field.elementName as string] = value;
+			}
 			continue;
 		}
 
@@ -325,6 +411,13 @@ export function renderForm({
 	res.render('form-trigger', data);
 }
 
+export const isFormConnected = (nodes: NodeTypeAndVersion[]) => {
+	return nodes.some(
+		(n) =>
+			n.type === FORM_NODE_TYPE || (n.type === WAIT_NODE_TYPE && n.parameters?.resume === 'form'),
+	);
+};
+
 export async function formWebhook(
 	context: IWebhookFunctions,
 	authProperty = FORM_TRIGGER_AUTHENTICATION_PROPERTY,
@@ -364,16 +457,26 @@ export async function formWebhook(
 	}
 
 	const mode = context.getMode() === 'manual' ? 'test' : 'production';
-	const formFields = context.getNodeParameter('formFields.values', []) as FormFieldsParameter;
+	const formFields = (context.getNodeParameter('formFields.values', []) as FormFieldsParameter).map(
+		(field) => {
+			if (field.fieldType === 'html') {
+				field.html = sanitizeHtml(field.html as string);
+			}
+			if (field.fieldType === 'hiddenField') {
+				field.fieldLabel = field.fieldName as string;
+			}
+			return field;
+		},
+	);
 	const method = context.getRequestObject().method;
 
-	checkResponseModeConfiguration(context);
+	validateResponseModeConfiguration(context);
 
 	//Show the form on GET request
 	if (method === 'GET') {
 		const formTitle = context.getNodeParameter('formTitle', '') as string;
-		const formDescription = context.getNodeParameter('formDescription', '') as string;
-		const responseMode = context.getNodeParameter('responseMode', '') as string;
+		const formDescription = sanitizeHtml(context.getNodeParameter('formDescription', '') as string);
+		let responseMode = context.getNodeParameter('responseMode', '') as string;
 
 		let formSubmittedText;
 		let redirectUrl;
@@ -401,15 +504,14 @@ export async function formWebhook(
 			buttonLabel = options.buttonLabel;
 		}
 
-		if (!redirectUrl && node.type !== FORM_TRIGGER_NODE_TYPE) {
-			const connectedNodes = context.getChildNodes(context.getNode().name);
-			const hasNextPage = connectedNodes.some(
-				(n) => n.type === FORM_NODE_TYPE || n.type === WAIT_NODE_TYPE,
-			);
+		const connectedNodes = context.getChildNodes(context.getNode().name, {
+			includeNodeParameters: true,
+		});
+		const hasNextPage = isFormConnected(connectedNodes);
 
-			if (hasNextPage) {
-				redirectUrl = context.evaluateExpression('{{ $execution.resumeFormUrl }}') as string;
-			}
+		if (hasNextPage) {
+			redirectUrl = undefined;
+			responseMode = 'responseNode';
 		}
 
 		renderForm({

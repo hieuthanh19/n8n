@@ -70,7 +70,7 @@ import { useTagsStore } from '@/stores/tags.store';
 import { useWorkflowsEEStore } from '@/stores/workflows.ee.store';
 import { useNpsSurveyStore } from '@/stores/npsSurvey.store';
 
-type ResolveParameterOptions = {
+export type ResolveParameterOptions = {
 	targetItem?: TargetItem;
 	inputNodeName?: string;
 	inputRunIndex?: number;
@@ -518,7 +518,6 @@ export function useWorkflowHelpers(options: { router: ReturnType<typeof useRoute
 
 		const nodes: INode[] = [];
 		for (let nodeIndex = 0; nodeIndex < workflowNodes.length; nodeIndex++) {
-			// @ts-ignore
 			nodeData = getNodeDataToSave(workflowNodes[nodeIndex]);
 
 			nodes.push(nodeData);
@@ -882,7 +881,6 @@ export function useWorkflowHelpers(options: { router: ReturnType<typeof useRoute
 					}),
 					i18n.baseText('workflows.concurrentChanges.confirmMessage.title'),
 					{
-						dangerouslyUseHTMLString: true,
 						confirmButtonText: i18n.baseText(
 							'workflows.concurrentChanges.confirmMessage.confirmButtonText',
 						),
@@ -1002,9 +1000,10 @@ export function useWorkflowHelpers(options: { router: ReturnType<typeof useRoute
 			}
 
 			if (redirect) {
-				void router.replace({
+				await router.replace({
 					name: VIEWS.WORKFLOW,
-					params: { name: workflowData.id, action: 'workflowSave' },
+					params: { name: workflowData.id },
+					query: { action: 'workflowSave' },
 				});
 			}
 
@@ -1181,6 +1180,14 @@ export function useWorkflowHelpers(options: { router: ReturnType<typeof useRoute
 		tagsStore.upsertTags(tags);
 	}
 
+	/**
+	 * Check if workflow contains any node from specified package
+	 * by performing a quick check based on the node type name.
+	 */
+	const containsNodeFromPackage = (workflow: IWorkflowDb, packageName: string) => {
+		return workflow.nodes.some((node) => node.type.startsWith(packageName));
+	};
+
 	return {
 		setDocumentTitle,
 		resolveParameter,
@@ -1207,5 +1214,6 @@ export function useWorkflowHelpers(options: { router: ReturnType<typeof useRoute
 		promptSaveUnsavedWorkflowChanges,
 		initState,
 		getNodeParametersWithResolvedExpressions,
+		containsNodeFromPackage,
 	};
 }

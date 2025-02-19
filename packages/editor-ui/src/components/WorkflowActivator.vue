@@ -4,22 +4,31 @@ import { useWorkflowActivate } from '@/composables/useWorkflowActivate';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 import { getActivatableTriggerNodes } from '@/utils/nodeTypesUtils';
 import type { VNode } from 'vue';
-import { computed, h } from 'vue';
+import { computed, h, watch } from 'vue';
 import { useI18n } from '@/composables/useI18n';
 import type { PermissionsRecord } from '@/permissions';
 import { EXECUTE_WORKFLOW_TRIGGER_NODE_TYPE, PLACEHOLDER_EMPTY_WORKFLOW_ID } from '@/constants';
 import WorkflowActivationErrorMessage from './WorkflowActivationErrorMessage.vue';
+import { useCredentialsStore } from '@/stores/credentials.store';
+import type { INodeUi, IUsedCredential } from '@/Interface';
+import { OPEN_AI_API_CREDENTIAL_TYPE } from 'n8n-workflow';
 
 const props = defineProps<{
 	workflowActive: boolean;
 	workflowId: string;
 	workflowPermissions: PermissionsRecord['workflow'];
 }>();
+
+const emit = defineEmits<{
+	'update:workflowActive': [value: { id: string; active: boolean }];
+}>();
+
 const { showMessage } = useToast();
 const workflowActivate = useWorkflowActivate();
 
 const i18n = useI18n();
 const workflowsStore = useWorkflowsStore();
+const credentialsStore = useCredentialsStore();
 
 const isWorkflowActive = computed((): boolean => {
 	const activeWorkflows = workflowsStore.activeWorkflows;
@@ -69,8 +78,47 @@ const disabled = computed((): boolean => {
 	return false;
 });
 
+function findManagedOpenAiCredentialId(
+	usedCredentials: Record<string, IUsedCredential>,
+): string | undefined {
+	return Object.keys(usedCredentials).find((credentialId) => {
+		const credential = credentialsStore.state.credentials[credentialId];
+		return credential.isManaged && credential.type === OPEN_AI_API_CREDENTIAL_TYPE;
+	});
+}
+
+function hasActiveNodeUsingCredential(nodes: INodeUi[], credentialId: string): boolean {
+	return nodes.some(
+		(node) =>
+			node?.credentials?.[OPEN_AI_API_CREDENTIAL_TYPE]?.id === credentialId && !node.disabled,
+	);
+}
+
+/**
+ * Determines if the warning for free AI credits should be shown in the workflow.
+ *
+ * This computed property evaluates whether to display a warning about free AI credits
+ * in the workflow. The warning is shown when both conditions are met:
+ * 1. The workflow uses managed OpenAI API credentials
+ * 2. Those credentials are associated with at least one enabled node
+ *
+ */
+const shouldShowFreeAiCreditsWarning = computed((): boolean => {
+	const usedCredentials = workflowsStore?.usedCredentials;
+	if (!usedCredentials) return false;
+
+	const managedOpenAiCredentialId = findManagedOpenAiCredentialId(usedCredentials);
+	if (!managedOpenAiCredentialId) return false;
+
+	return hasActiveNodeUsingCredential(workflowsStore.allNodes, managedOpenAiCredentialId);
+});
+
 async function activeChanged(newActiveState: boolean) {
-	return await workflowActivate.updateWorkflowActivation(props.workflowId, newActiveState);
+	const newState = await workflowActivate.updateWorkflowActivation(
+		props.workflowId,
+		newActiveState,
+	);
+	emit('update:workflowActive', { id: props.workflowId, active: newState });
 }
 
 async function displayActivationError() {
@@ -100,6 +148,20 @@ async function displayActivationError() {
 		duration: 0,
 	});
 }
+
+watch(
+	() => props.workflowActive,
+	(workflowActive) => {
+		if (workflowActive && shouldShowFreeAiCreditsWarning.value) {
+			showMessage({
+				title: i18n.baseText('freeAi.credits.showWarning.workflow.activation.title'),
+				message: i18n.baseText('freeAi.credits.showWarning.workflow.activation.description'),
+				type: 'warning',
+				duration: 0,
+			});
+		}
+	},
+);
 </script>
 
 <template>

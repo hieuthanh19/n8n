@@ -10,14 +10,12 @@ import type {
 	JsonObject,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeApiError } from 'n8n-workflow';
-
 import { v4 as uuid } from 'uuid';
-import { generatePairedItemData } from '../../../../utils/utilities';
-import { googleApiRequest, googleApiRequestAllItems, simplify } from './GenericFunctions';
-
-import { recordFields, recordOperations } from './RecordDescription';
 
 import { oldVersionNotice } from '@utils/descriptions';
+
+import { googleApiRequest, googleApiRequestAllItems, simplify } from './GenericFunctions';
+import { recordFields, recordOperations } from './RecordDescription';
 
 const versionDescription: INodeTypeDescription = {
 	displayName: 'Google BigQuery',
@@ -196,8 +194,6 @@ export class GoogleBigQueryV1 implements INodeType {
 
 				body.rows = rows;
 
-				const itemData = generatePairedItemData(items.length);
-
 				try {
 					responseData = await googleApiRequest.call(
 						this,
@@ -206,17 +202,11 @@ export class GoogleBigQueryV1 implements INodeType {
 						body,
 					);
 
-					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData as IDataObject[]),
-						{ itemData },
-					);
+					const executionData = this.helpers.returnJsonArray(responseData as IDataObject[]);
 					returnData.push(...executionData);
 				} catch (error) {
 					if (this.continueOnFail()) {
-						const executionErrorData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray({ error: error.message }),
-							{ itemData },
-						);
+						const executionErrorData = this.helpers.returnJsonArray({ error: error.message });
 						returnData.push(...executionErrorData);
 					}
 					throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: 0 });

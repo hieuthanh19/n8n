@@ -1,4 +1,3 @@
-import qs from 'node:querystring';
 import type {
 	IExecuteFunctions,
 	IDataObject,
@@ -9,6 +8,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import qs from 'node:querystring';
 
 import { awsApiRequestSOAP, awsApiRequestSOAPAllItems } from './GenericFunctions';
 
@@ -30,6 +30,7 @@ export class AwsSes implements INodeType {
 		defaults: {
 			name: 'AWS SES',
 		},
+		usableAsTool: true,
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		credentials: [

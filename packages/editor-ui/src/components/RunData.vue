@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { useStorage } from '@/composables/useStorage';
 import { saveAs } from 'file-saver';
-import type {
-	IBinaryData,
-	IConnectedNode,
-	IDataObject,
-	INodeExecutionData,
-	INodeOutputConfiguration,
-	IRunData,
-	IRunExecutionData,
-	ITaskMetadata,
-	NodeError,
-	NodeHint,
-	Workflow,
+import {
+	type IBinaryData,
+	type IConnectedNode,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeOutputConfiguration,
+	type IRunData,
+	type IRunExecutionData,
+	type ITaskMetadata,
+	type NodeError,
+	type NodeHint,
+	TRIMMED_TASK_DATA_CONNECTIONS_KEY,
+	type Workflow,
+	parseErrorMetadata,
 } from 'n8n-workflow';
 import { NodeConnectionType, NodeHelpers } from 'n8n-workflow';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
@@ -26,6 +28,7 @@ import type {
 } from '@/Interface';
 
 import {
+	CORE_NODES_CATEGORY,
 	DATA_EDITING_DOCS_URL,
 	DATA_PINNING_DOCS_URL,
 	HTML_NODE_TYPE,
@@ -34,6 +37,7 @@ import {
 	MAX_DISPLAY_DATA_SIZE,
 	MAX_DISPLAY_DATA_SIZE_SCHEMA_VIEW,
 	NODE_TYPES_EXCLUDED_FROM_OUTPUT_NAME_APPEND,
+	SCHEMA_PREVIEW_EXPERIMENT,
 	TEST_PIN_DATA,
 } from '@/constants';
 
@@ -46,7 +50,6 @@ import { useExternalHooks } from '@/composables/useExternalHooks';
 import { useI18n } from '@/composables/useI18n';
 import { useNodeHelpers } from '@/composables/useNodeHelpers';
 import { useNodeType } from '@/composables/useNodeType';
-import { useSettingsStore } from '@/stores/settings.store';
 import type { PinDataSource, UnpinDataSource } from '@/composables/usePinnedData';
 import { usePinnedData } from '@/composables/usePinnedData';
 import { useTelemetry } from '@/composables/useTelemetry';
@@ -60,7 +63,7 @@ import { useWorkflowsStore } from '@/stores/workflows.store';
 import { executionDataToJson } from '@/utils/nodeTypesUtils';
 import { getGenericHints } from '@/utils/nodeViewUtils';
 import { searchInObject } from '@/utils/objectUtils';
-import { clearJsonKey, isEmpty } from '@/utils/typesUtils';
+import { clearJsonKey, isEmpty, isPresent } from '@/utils/typesUtils';
 import { isEqual, isObject } from 'lodash-es';
 import {
 	N8nBlockUi,
@@ -80,6 +83,10 @@ import {
 import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useExecutionHelpers } from '@/composables/useExecutionHelpers';
+import { useUIStore } from '@/stores/ui.store';
+import { useSchemaPreviewStore } from '@/stores/schemaPreview.store';
+import { asyncComputed } from '@vueuse/core';
+import { usePostHog } from '@/stores/posthog.store';
 
 const LazyRunDataTable = defineAsyncComponent(
 	async () => await import('@/components/RunDataTable.vue'),
@@ -88,10 +95,8 @@ const LazyRunDataJson = defineAsyncComponent(
 	async () => await import('@/components/RunDataJson.vue'),
 );
 
-const LazyRunDataSchema = defineAsyncComponent(async () =>
-	useSettingsStore().settings.virtualSchemaView
-		? await import('@/components/VirtualSchema.vue')
-		: await import('@/components/RunDataSchema.vue'),
+const LazyRunDataSchema = defineAsyncComponent(
+	async () => await import('@/components/VirtualSchema.vue'),
 );
 const LazyRunDataHtml = defineAsyncComponent(
 	async () => await import('@/components/RunDataHtml.vue'),
@@ -181,6 +186,9 @@ const ndvStore = useNDVStore();
 const workflowsStore = useWorkflowsStore();
 const sourceControlStore = useSourceControlStore();
 const rootStore = useRootStore();
+const uiStore = useUIStore();
+const schemaPreviewStore = useSchemaPreviewStore();
+const posthogStore = usePostHog();
 
 const toast = useToast();
 const route = useRoute();
@@ -278,6 +286,10 @@ const isArtificialRecoveredEventItem = computed(
 	() => rawInputData.value?.[0]?.json?.isArtificialRecoveredEventItem,
 );
 
+const isTrimmedManualExecutionDataItem = computed(
+	() => rawInputData.value?.[0]?.json?.[TRIMMED_TASK_DATA_CONNECTIONS_KEY],
+);
+
 const subworkflowExecutionError = computed(() => {
 	if (!node.value) return null;
 	return {
@@ -289,6 +301,12 @@ const subworkflowExecutionError = computed(() => {
 const hasSubworkflowExecutionError = computed(() =>
 	Boolean(workflowsStore.subWorkflowExecutionError),
 );
+
+// Sub-nodes may wish to display the parent node error as it can contain additional metadata
+const parentNodeError = computed(() => {
+	const parentNode = props.workflow.getChildNodes(node.value?.name ?? '', 'ALL_NON_MAIN')[0];
+	return workflowRunData.value?.[parentNode]?.[props.runIndex]?.error as NodeError;
+});
 const workflowRunErrorAsNodeError = computed(() => {
 	if (!node.value) {
 		return null;
@@ -296,8 +314,7 @@ const workflowRunErrorAsNodeError = computed(() => {
 
 	// If the node is a sub-node, we need to get the parent node error to check for input errors
 	if (isSubNodeType.value && props.paneType === 'input') {
-		const parentNode = props.workflow.getChildNodes(node.value?.name ?? '', 'ALL_NON_MAIN')[0];
-		return workflowRunData.value?.[parentNode]?.[props.runIndex]?.error as NodeError;
+		return parentNodeError.value;
 	}
 	return workflowRunData.value?.[node.value?.name]?.[props.runIndex]?.error as NodeError;
 });
@@ -522,13 +539,25 @@ const activeTaskMetadata = computed((): ITaskMetadata | null => {
 	if (!node.value) {
 		return null;
 	}
+	const errorMetadata = parseErrorMetadata(workflowRunErrorAsNodeError.value);
+	if (errorMetadata !== undefined) {
+		return errorMetadata;
+	}
+
+	// This is needed for the WorkflowRetriever to display the associated execution
+	if (parentNodeError.value) {
+		const subNodeMetadata = parseErrorMetadata(parentNodeError.value);
+		if (subNodeMetadata !== undefined) {
+			return subNodeMetadata;
+		}
+	}
 
 	return workflowRunData.value?.[node.value.name]?.[props.runIndex]?.metadata ?? null;
 });
 
-const hasReleatedExectuion = computed((): boolean => {
+const hasRelatedExecution = computed(() => {
 	return Boolean(
-		activeTaskMetadata.value?.subExecution || activeTaskMetadata.value?.parentExecution,
+		activeTaskMetadata.value?.subExecution ?? activeTaskMetadata.value?.parentExecution,
 	);
 });
 
@@ -540,6 +569,36 @@ const hasInputOverwrite = computed((): boolean => {
 	return Boolean(taskData?.inputOverride);
 });
 
+const isSchemaPreviewEnabled = computed(
+	() =>
+		props.paneType === 'input' &&
+		!(nodeType.value?.codex?.categories ?? []).some(
+			(category) => category === CORE_NODES_CATEGORY,
+		) &&
+		posthogStore.isFeatureEnabled(SCHEMA_PREVIEW_EXPERIMENT),
+);
+
+const hasPreviewSchema = asyncComputed(async () => {
+	if (!isSchemaPreviewEnabled.value || props.nodes.length === 0) return false;
+	const nodes = props.nodes
+		.filter((n) => n.depth === 1)
+		.map((n) => workflowsStore.getNodeByName(n.name))
+		.filter(isPresent);
+
+	for (const connectedNode of nodes) {
+		const { type, typeVersion, parameters } = connectedNode;
+		const hasPreview = await schemaPreviewStore.getSchemaPreview({
+			nodeType: type,
+			version: typeVersion,
+			resource: parameters.resource as string,
+			operation: parameters.operation as string,
+		});
+
+		if (hasPreview.ok) return true;
+	}
+	return false;
+}, false);
+
 watch(node, (newNode, prevNode) => {
 	if (newNode?.id === prevNode?.id) return;
 	init();
@@ -547,6 +606,10 @@ watch(node, (newNode, prevNode) => {
 
 watch(hasNodeRun, () => {
 	if (props.paneType === 'output') setDisplayMode();
+	else {
+		// InputPanel relies on the outputIndex to check if we have data
+		outputIndex.value = determineInitialOutputIndex();
+	}
 });
 
 watch(
@@ -1080,9 +1143,19 @@ function getDataCount(
 	return getFilteredData(pinOrLiveData).length;
 }
 
+function determineInitialOutputIndex() {
+	for (let i = 0; i <= maxOutputIndex.value; i++) {
+		if (getRawInputData(props.runIndex, i).length) {
+			return i;
+		}
+	}
+
+	return 0;
+}
+
 function init() {
 	// Reset the selected output index every time another node gets selected
-	outputIndex.value = 0;
+	outputIndex.value = determineInitialOutputIndex();
 	refreshDataSize();
 	closeBinaryDataDisplay();
 	let outputTypes: NodeConnectionType[] = [];
@@ -1242,9 +1315,13 @@ function getExecutionLinkLabel(task: ITaskMetadata): string | undefined {
 	}
 
 	if (task.subExecution) {
-		return i18n.baseText('runData.openSubExecution', {
-			interpolate: { id: task.subExecution.executionId },
-		});
+		if (activeTaskMetadata.value?.subExecutionsCount === 1) {
+			return i18n.baseText('runData.openSubExecutionSingle');
+		} else {
+			return i18n.baseText('runData.openSubExecutionWithId', {
+				interpolate: { id: task.subExecution.executionId },
+			});
+		}
 	}
 
 	return;
@@ -1256,10 +1333,16 @@ defineExpose({ enterEditMode });
 <template>
 	<div :class="['run-data', $style.container]" @mouseover="activatePane">
 		<N8nCallout
-			v-if="pinnedData.hasData.value && !editMode.enabled && !isProductionExecutionPreview"
+			v-if="
+				!isPaneTypeInput &&
+				pinnedData.hasData.value &&
+				!editMode.enabled &&
+				!isProductionExecutionPreview
+			"
 			theme="secondary"
 			icon="thumbtack"
 			:class="$style.pinnedDataCallout"
+			data-test-id="ndv-pinned-data-callout"
 		>
 			{{ i18n.baseText('runData.pindata.thisDataIsPinned') }}
 			<span v-if="!isReadOnlyRoute && !readOnlyEnv" class="ml-4xs">
@@ -1299,7 +1382,7 @@ defineExpose({ enterEditMode });
 			<slot name="header"></slot>
 
 			<div
-				v-show="!hasRunError"
+				v-show="!hasRunError && !isTrimmedManualExecutionDataItem"
 				:class="$style.displayModes"
 				data-test-id="run-data-pane-header"
 				@click.stop
@@ -1318,7 +1401,8 @@ defineExpose({ enterEditMode });
 
 				<N8nRadioButtons
 					v-show="
-						hasNodeRun && (inputData.length || binaryData.length || search) && !editMode.enabled
+						hasPreviewSchema ||
+						(hasNodeRun && (inputData.length || binaryData.length || search) && !editMode.enabled)
 					"
 					:model-value="displayMode"
 					:options="displayModes"
@@ -1403,7 +1487,7 @@ defineExpose({ enterEditMode });
 					</template>
 					<N8nIconButton
 						:icon="linkedRuns ? 'unlink' : 'link'"
-						class="linkRun"
+						:class="['linkRun', linkedRuns ? 'linked' : '']"
 						text
 						type="tertiary"
 						size="small"
@@ -1417,7 +1501,7 @@ defineExpose({ enterEditMode });
 
 			<a
 				v-if="
-					activeTaskMetadata && hasReleatedExectuion && !(paneType === 'input' && hasInputOverwrite)
+					activeTaskMetadata && hasRelatedExecution && !(paneType === 'input' && hasInputOverwrite)
 				"
 				:class="$style.relatedExecutionInfo"
 				data-test-id="related-execution-link"
@@ -1433,7 +1517,7 @@ defineExpose({ enterEditMode });
 		<slot v-if="!displaysMultipleNodes" name="before-data" />
 
 		<div v-if="props.calloutMessage" :class="$style.hintCallout">
-			<N8nCallout theme="secondary" data-test-id="run-data-callout">
+			<N8nCallout theme="info" data-test-id="run-data-callout">
 				<N8nText v-n8n-html="props.calloutMessage" size="small"></N8nText>
 			</N8nCallout>
 		</div>
@@ -1443,6 +1527,7 @@ defineExpose({ enterEditMode });
 			:key="hint.message"
 			:class="$style.hintCallout"
 			:theme="hint.type || 'info'"
+			data-test-id="node-hint"
 		>
 			<N8nText v-n8n-html="hint.message" size="small"></N8nText>
 		</N8nCallout>
@@ -1465,14 +1550,13 @@ defineExpose({ enterEditMode });
 
 		<div
 			v-else-if="
-				!hasRunError &&
 				hasNodeRun &&
 				!isSearchInSchemaView &&
 				((dataCount > 0 && maxRunIndex === 0) || search) &&
 				!isArtificialRecoveredEventItem &&
 				!displaysMultipleNodes
 			"
-			v-show="!editMode.enabled && !hasRunError"
+			v-show="!editMode.enabled"
 			:class="[$style.itemsCount, { [$style.muted]: paneType === 'input' && maxRunIndex === 0 }]"
 			data-test-id="ndv-items-count"
 		>
@@ -1507,7 +1591,7 @@ defineExpose({ enterEditMode });
 
 			<a
 				v-if="
-					activeTaskMetadata && hasReleatedExectuion && !(paneType === 'input' && hasInputOverwrite)
+					activeTaskMetadata && hasRelatedExecution && !(paneType === 'input' && hasInputOverwrite)
 				"
 				:class="$style.relatedExecutionInfo"
 				data-test-id="related-execution-link"
@@ -1562,7 +1646,7 @@ defineExpose({ enterEditMode });
 			</div>
 
 			<div
-				v-else-if="!hasNodeRun && !(displaysMultipleNodes && node?.disabled)"
+				v-else-if="!hasNodeRun && !(displaysMultipleNodes && (node?.disabled || hasPreviewSchema))"
 				:class="$style.center"
 			>
 				<slot name="node-not-run"></slot>
@@ -1577,6 +1661,25 @@ defineExpose({ enterEditMode });
 					<N8nLink @click="enableNode">
 						{{ i18n.baseText('ndv.input.disabled.cta') }}
 					</N8nLink>
+				</N8nText>
+			</div>
+
+			<div
+				v-else-if="isTrimmedManualExecutionDataItem && uiStore.isProcessingExecutionResults"
+				:class="$style.center"
+			>
+				<div :class="$style.spinner"><N8nSpinner type="ring" /></div>
+				<N8nText color="text-dark" size="large">
+					{{ i18n.baseText('runData.trimmedData.loading') }}
+				</N8nText>
+			</div>
+
+			<div v-else-if="isTrimmedManualExecutionDataItem" :class="$style.center">
+				<N8nText bold color="text-dark" size="large">
+					{{ i18n.baseText('runData.trimmedData.title') }}
+				</N8nText>
+				<N8nText>
+					{{ i18n.baseText('runData.trimmedData.message') }}
 				</N8nText>
 			</div>
 
@@ -1734,7 +1837,7 @@ defineExpose({ enterEditMode });
 				<LazyRunDataHtml :input-html="inputHtml" />
 			</Suspense>
 
-			<Suspense v-else-if="hasNodeRun && isSchemaView">
+			<Suspense v-else-if="(hasNodeRun || hasPreviewSchema) && isSchemaView">
 				<LazyRunDataSchema
 					:nodes="nodes"
 					:mapping-enabled="mappingEnabled"
