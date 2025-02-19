@@ -226,7 +226,7 @@ const openCommunityRegisterModal = () => {
 
 			<div :class="$style.buttons">
 				<n8n-button
-					v-if="canUserActivateLicense"
+					v-if="false"
 					:class="$style.buttonTertiary"
 					type="tertiary"
 					size="large"

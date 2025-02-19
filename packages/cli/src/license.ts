@@ -243,7 +243,8 @@ export class License {
 	}
 
 	isAiCreditsEnabled() {
-		return this.isFeatureEnabled(LICENSE_FEATURES.AI_CREDITS);
+		// return this.isFeatureEnabled(LICENSE_FEATURES.AI_CREDITS);
+		return false;
 	}
 
 	isAdvancedExecutionFiltersEnabled() {
@@ -373,7 +374,7 @@ export class License {
 
 	getApiKeysPerUserLimit() {
 		// return this.getFeatureValue(LICENSE_QUOTAS.API_KEYS_PER_USER_LIMIT) ?? 1;
-		return UNLIMITED_LICENSE_QUOTA;
+		return 20;
 	}
 
 	getTriggerLimit() {
@@ -387,8 +388,7 @@ export class License {
 	}
 
 	getAiCredits() {
-		// return this.getFeatureValue(LICENSE_QUOTAS.AI_CREDITS) ?? 0;
-		return UNLIMITED_LICENSE_QUOTA;
+		return this.getFeatureValue(LICENSE_QUOTAS.AI_CREDITS) ?? 0;
 	}
 
 	getWorkflowHistoryPruneLimit() {
