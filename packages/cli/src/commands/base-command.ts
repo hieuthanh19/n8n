@@ -1,8 +1,11 @@
 import 'reflect-metadata';
 import { GlobalConfig } from '@n8n/config';
+import { LICENSE_FEATURES } from '@n8n/constants';
+import { ModuleRegistry } from '@n8n/decorators';
 import { Container } from '@n8n/di';
 import { Command, Errors } from '@oclif/core';
 import {
+	BinaryDataConfig,
 	BinaryDataService,
 	InstanceSettings,
 	Logger,
@@ -14,13 +17,7 @@ import { ensureError, sleep, UserError } from 'n8n-workflow';
 
 import type { AbstractServer } from '@/abstract-server';
 import config from '@/config';
-import {
-	LICENSE_FEATURES,
-	N8N_VERSION,
-	N8N_RELEASE_DATE,
-	inDevelopment,
-	inTest,
-} from '@/constants';
+import { N8N_VERSION, N8N_RELEASE_DATE, inDevelopment, inTest } from '@/constants';
 import * as CrashJournal from '@/crash-journal';
 import * as Db from '@/db';
 import { getDataDeduplicationService } from '@/deduplication';
@@ -33,8 +30,11 @@ import { ExternalHooks } from '@/external-hooks';
 import { ExternalSecretsManager } from '@/external-secrets.ee/external-secrets-manager.ee';
 import { License } from '@/license';
 import { LoadNodesAndCredentials } from '@/load-nodes-and-credentials';
+import type { ModulePreInit } from '@/modules/modules.config';
+import { ModulesConfig } from '@/modules/modules.config';
 import { NodeTypes } from '@/node-types';
 import { PostHogClient } from '@/posthog';
+import { MultiMainSetup } from '@/scaling/multi-main-setup.ee';
 import { ShutdownService } from '@/shutdown/shutdown.service';
 import { WorkflowHistoryManager } from '@/workflows/workflow-history.ee/workflow-history-manager.ee';
 
@@ -57,6 +57,8 @@ export abstract class BaseCommand extends Command {
 
 	protected readonly globalConfig = Container.get(GlobalConfig);
 
+	protected readonly modulesConfig = Container.get(ModulesConfig);
+
 	/**
 	 * How long to wait for graceful shutdown before force killing the process.
 	 */
@@ -65,6 +67,37 @@ export abstract class BaseCommand extends Command {
 
 	/** Whether to init community packages (if enabled) */
 	protected needsCommunityPackages = false;
+
+	protected async loadModules() {
+		for (const moduleName of this.modulesConfig.modules) {
+			let preInitModule: ModulePreInit | undefined;
+			try {
+				preInitModule = (await import(
+					`../modules/${moduleName}/${moduleName}.pre-init`
+				)) as ModulePreInit;
+			} catch {}
+
+			if (
+				!preInitModule ||
+				preInitModule.shouldLoadModule?.({
+					database: this.globalConfig.database,
+					instance: this.instanceSettings,
+				})
+			) {
+				// register module in the registry for the dependency injection
+				await import(`../modules/${moduleName}/${moduleName}.module`);
+
+				this.modulesConfig.addLoadedModule(moduleName);
+				this.logger.debug(`Loaded module "${moduleName}"`);
+			}
+		}
+
+		Container.get(ModuleRegistry).initializeModules();
+
+		if (this.instanceSettings.isMultiMain) {
+			Container.get(MultiMainSetup).registerEventHandlers();
+		}
+	}
 
 	async init(): Promise<void> {
 		this.errorReporter = Container.get(ErrorReporter);
@@ -104,6 +137,8 @@ export abstract class BaseCommand extends Command {
 		);
 
 		Container.get(DeprecationService).warn();
+
+		if (process.env.EXECUTIONS_PROCESS === 'own') process.exit(-1);
 
 		if (
 			config.getEnv('executions.mode') === 'queue' &&
@@ -150,8 +185,9 @@ export abstract class BaseCommand extends Command {
 	}
 
 	async initObjectStoreService() {
-		const isSelected = config.getEnv('binaryDataManager.mode') === 's3';
-		const isAvailable = config.getEnv('binaryDataManager.availableModes').includes('s3');
+		const binaryDataConfig = Container.get(BinaryDataConfig);
+		const isSelected = binaryDataConfig.mode === 's3';
+		const isAvailable = binaryDataConfig.availableModes.includes('s3');
 
 		if (!isSelected) return;
 
@@ -188,8 +224,7 @@ export abstract class BaseCommand extends Command {
 			process.exit(1);
 		}
 
-		const binaryDataConfig = config.getEnv('binaryDataManager');
-		await Container.get(BinaryDataService).init(binaryDataConfig);
+		await Container.get(BinaryDataService).init();
 	}
 
 	protected async initDataDeduplicationService() {

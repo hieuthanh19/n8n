@@ -24,6 +24,7 @@ import InlineAskAssistantButton from '@n8n/design-system/components/InlineAskAss
 import { useUIStore } from '@/stores/ui.store';
 import { isCommunityPackageName } from '@/utils/nodeTypesUtils';
 import { useAIAssistantHelpers } from '@/composables/useAIAssistantHelpers';
+import { N8nIconButton } from '@n8n/design-system';
 
 type Props = {
 	// TODO: .node can be undefined
@@ -459,11 +460,11 @@ async function onAskAssistantClick() {
 					placement="left"
 				>
 					<div class="copy-button">
-						<n8n-icon-button
+						<N8nIconButton
 							icon="copy"
 							type="secondary"
 							size="mini"
-							text="true"
+							:text="true"
 							transparent-background="transparent"
 							@click="copyErrorDetails"
 						/>
@@ -665,7 +666,7 @@ async function onAskAssistantClick() {
 		padding: var(--spacing-2xs) var(--spacing-s);
 		border-bottom: 1px solid var(--color-danger-tint-1);
 		font-size: var(--font-size-3xs);
-		font-weight: var(--font-weight-bold);
+		font-weight: var(--font-weight-medium);
 		background-color: var(--color-danger-tint-2);
 		border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
 		color: var(--color-danger);
@@ -678,7 +679,7 @@ async function onAskAssistantClick() {
 		gap: var(--spacing-xs);
 		padding: var(--spacing-xs) var(--spacing-s) var(--spacing-3xs) var(--spacing-s);
 		color: var(--color-danger);
-		font-weight: var(--font-weight-bold);
+		font-weight: var(--font-weight-medium);
 		font-size: var(--font-size-s);
 	}
 

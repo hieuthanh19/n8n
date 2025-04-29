@@ -34,6 +34,8 @@ import {
 	PROMPT_MFA_CODE_MODAL_KEY,
 	COMMUNITY_PLUS_ENROLLMENT_MODAL,
 	DELETE_FOLDER_MODAL_KEY,
+	MOVE_FOLDER_MODAL_KEY,
+	WORKFLOW_ACTIVATION_CONFLICTING_WEBHOOK_MODAL_KEY,
 } from '@/constants';
 
 import AboutModal from '@/components/AboutModal.vue';
@@ -67,9 +69,10 @@ import DebugPaywallModal from '@/components/DebugPaywallModal.vue';
 import WorkflowHistoryVersionRestoreModal from '@/components/WorkflowHistory/WorkflowHistoryVersionRestoreModal.vue';
 import SetupWorkflowCredentialsModal from '@/components/SetupWorkflowCredentialsModal/SetupWorkflowCredentialsModal.vue';
 import ProjectMoveResourceModal from '@/components/Projects/ProjectMoveResourceModal.vue';
-import NewAssistantSessionModal from '@/components/AskAssistant/NewAssistantSessionModal.vue';
+import NewAssistantSessionModal from '@/components/AskAssistant/Chat/NewAssistantSessionModal.vue';
 import PromptMfaCodeModal from './PromptMfaCodeModal/PromptMfaCodeModal.vue';
 import CommunityPlusEnrollmentModal from '@/components/CommunityPlusEnrollmentModal.vue';
+import WorkflowActivationConflictingWebhookModal from '@/components/WorkflowActivationConflictingWebhookModal.vue';
 import type { EventBus } from '@n8n/utils/event-bus';
 </script>
 
@@ -285,6 +288,18 @@ import type { EventBus } from '@n8n/utils/event-bus';
 		<ModalRoot :name="DELETE_FOLDER_MODAL_KEY">
 			<template #default="{ modalName, activeId, data }">
 				<DeleteFolderModal :modal-name="modalName" :active-id="activeId" :data="data" />
+			</template>
+		</ModalRoot>
+
+		<ModalRoot :name="MOVE_FOLDER_MODAL_KEY">
+			<template #default="{ modalName, activeId, data }">
+				<MoveToFolderModal :modal-name="modalName" :active-id="activeId" :data="data" />
+			</template>
+		</ModalRoot>
+
+		<ModalRoot :name="WORKFLOW_ACTIVATION_CONFLICTING_WEBHOOK_MODAL_KEY">
+			<template #default="{ modalName, data }">
+				<WorkflowActivationConflictingWebhookModal :data="data" :modal-name="modalName" />
 			</template>
 		</ModalRoot>
 	</div>

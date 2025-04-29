@@ -1,27 +1,17 @@
-import type {
-	ICredentialDataDecryptedObject,
-	IDataObject,
-	IHttpRequestOptions,
-} from 'n8n-workflow';
-import { NodeConnectionType } from 'n8n-workflow';
-import nock from 'nock';
+import type { WorkflowTestData } from 'n8n-workflow';
+import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { executeWorkflow } from '@test/nodes/ExecuteWorkflow';
 import * as Helpers from '@test/nodes/Helpers';
-import type { WorkflowTestData } from '@test/nodes/types';
 
 import { gongApiResponse, gongNodeResponse } from './mocks';
-import { FAKE_CREDENTIALS_DATA } from '../../../test/nodes/FakeCredentialsMap';
 
 describe('Gong Node', () => {
 	const baseUrl = 'https://api.gong.io';
-
-	beforeEach(() => {
-		// https://github.com/nock/nock/issues/2057#issuecomment-663665683
-		if (!nock.isActive()) {
-			nock.activate();
-		}
-	});
+	const credentials = {
+		gongApi: { baseUrl },
+		gongOAuth2Api: { baseUrl },
+	};
 
 	describe('Credentials', () => {
 		const tests: WorkflowTestData[] = [
@@ -92,7 +82,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong gongApi',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -103,7 +93,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong gongOAuth2Api',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -121,73 +111,39 @@ describe('Gong Node', () => {
 						],
 					},
 				},
+				nock: {
+					baseUrl,
+					mocks: [
+						{
+							method: 'post',
+							path: '/v2/calls/extensive',
+							requestBody: { filter: { callIds: ['7782342274025937895'] } },
+							statusCode: 200,
+							responseBody: {
+								...gongApiResponse.postCallsExtensive,
+								records: {},
+								calls: [{ metaData: gongApiResponse.postCallsExtensive.calls[0].metaData }],
+							},
+						},
+						{
+							method: 'post',
+							path: '/v2/calls/extensive',
+							requestBody: { filter: { callIds: ['7782342274025937896'] } },
+							statusCode: 200,
+							responseBody: {
+								...gongApiResponse.postCallsExtensive,
+								records: {},
+								calls: [{ metaData: gongApiResponse.postCallsExtensive.calls[0].metaData }],
+							},
+						},
+					],
+				},
 			},
 		];
 
-		beforeAll(() => {
-			jest
-				.spyOn(Helpers.CredentialsHelper.prototype, 'authenticate')
-				.mockImplementation(
-					async (
-						credentials: ICredentialDataDecryptedObject,
-						typeName: string,
-						requestParams: IHttpRequestOptions,
-					): Promise<IHttpRequestOptions> => {
-						if (typeName === 'gongApi') {
-							return {
-								...requestParams,
-								headers: {
-									authorization:
-										'basic ' +
-										Buffer.from(`${credentials.accessKey}:${credentials.accessKeySecret}`).toString(
-											'base64',
-										),
-								},
-							};
-						} else if (typeName === 'gongOAuth2Api') {
-							return {
-								...requestParams,
-								headers: {
-									authorization:
-										'bearer ' + (credentials.oauthTokenData as IDataObject).access_token,
-								},
-							};
-						} else {
-							return requestParams;
-						}
-					},
-				);
-		});
-
-		nock(baseUrl)
-			.post('/v2/calls/extensive', { filter: { callIds: ['7782342274025937895'] } })
-			.matchHeader(
-				'authorization',
-				'basic ' +
-					Buffer.from(
-						`${FAKE_CREDENTIALS_DATA.gongApi.accessKey}:${FAKE_CREDENTIALS_DATA.gongApi.accessKeySecret}`,
-					).toString('base64'),
-			)
-			.reply(200, {
-				...gongApiResponse.postCallsExtensive,
-				records: {},
-				calls: [{ metaData: gongApiResponse.postCallsExtensive.calls[0].metaData }],
-			})
-			.post('/v2/calls/extensive', { filter: { callIds: ['7782342274025937896'] } })
-			.matchHeader(
-				'authorization',
-				'bearer ' + FAKE_CREDENTIALS_DATA.gongOAuth2Api.oauthTokenData.access_token,
-			)
-			.reply(200, {
-				...gongApiResponse.postCallsExtensive,
-				records: {},
-				calls: [{ metaData: gongApiResponse.postCallsExtensive.calls[0].metaData }],
-			});
-
-		const nodeTypes = Helpers.setup(tests);
-
 		test.each(tests)('$description', async (testData) => {
-			const { result } = await executeWorkflow(testData, nodeTypes);
+			testData.credentials = credentials;
+			const { result } = await executeWorkflow(testData);
 			const resultNodeData = Helpers.getResultNodeData(result, testData);
 			resultNodeData.forEach(({ nodeName, resultData }) =>
 				expect(resultData).toEqual(testData.output.nodeData[nodeName]),
@@ -241,7 +197,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -332,7 +288,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -449,7 +405,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -586,7 +542,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -667,7 +623,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -743,7 +699,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -780,10 +736,9 @@ describe('Gong Node', () => {
 			},
 		];
 
-		const nodeTypes = Helpers.setup(tests);
-
 		test.each(tests)('$description', async (testData) => {
-			const { result } = await executeWorkflow(testData, nodeTypes);
+			testData.credentials = credentials;
+			const { result } = await executeWorkflow(testData);
 
 			if (testData.description === 'should handle error response') {
 				// Only matches error message
@@ -845,7 +800,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -920,7 +875,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -1014,7 +969,7 @@ describe('Gong Node', () => {
 									[
 										{
 											node: 'Gong',
-											type: NodeConnectionType.Main,
+											type: NodeConnectionTypes.Main,
 											index: 0,
 										},
 									],
@@ -1051,10 +1006,9 @@ describe('Gong Node', () => {
 			},
 		];
 
-		const nodeTypes = Helpers.setup(tests);
-
 		test.each(tests)('$description', async (testData) => {
-			const { result } = await executeWorkflow(testData, nodeTypes);
+			testData.credentials = credentials;
+			const { result } = await executeWorkflow(testData);
 
 			if (testData.description === 'should handle error response') {
 				expect(() => Helpers.getResultNodeData(result, testData)).toThrow(

@@ -12,18 +12,21 @@ import type {
 	IPinData,
 	Workflow,
 	StartNodeData,
-	IRun,
 	INode,
 	IDataObject,
 	IWorkflowBase,
 } from 'n8n-workflow';
 
-import { NodeConnectionType, TelemetryHelpers } from 'n8n-workflow';
+import { NodeConnectionTypes, TelemetryHelpers } from 'n8n-workflow';
 
 import { useToast } from '@/composables/useToast';
 import { useNodeHelpers } from '@/composables/useNodeHelpers';
 
-import { CHAT_TRIGGER_NODE_TYPE, SINGLE_WEBHOOK_TRIGGERS } from '@/constants';
+import {
+	CHAT_TRIGGER_NODE_TYPE,
+	IN_PROGRESS_EXECUTION_ID,
+	SINGLE_WEBHOOK_TRIGGERS,
+} from '@/constants';
 
 import { useRootStore } from '@/stores/root.store';
 import { useUIStore } from '@/stores/ui.store';
@@ -78,8 +81,11 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 			throw error;
 		}
 
-		if (response.executionId !== undefined) {
-			workflowsStore.activeExecutionId = response.executionId;
+		if (
+			response.executionId !== undefined &&
+			workflowsStore.previousExecutionId !== response.executionId
+		) {
+			workflowsStore.setActiveExecutionId(response.executionId);
 		}
 
 		if (response.waitingForWebhook === true && useWorkflowsStore().nodesIssuesExist) {
@@ -114,7 +120,7 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 			if (options.destinationNode !== undefined) {
 				directParentNodes = workflow.getParentNodes(
 					options.destinationNode,
-					NodeConnectionType.Main,
+					NodeConnectionTypes.Main,
 					-1,
 				);
 			}
@@ -151,7 +157,7 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 				startNodeNames.push(options.destinationNode);
 			} else if (options.triggerNode && options.nodeData) {
 				startNodeNames.push(
-					...workflow.getChildNodes(options.triggerNode, NodeConnectionType.Main, 1),
+					...workflow.getChildNodes(options.triggerNode, NodeConnectionTypes.Main, 1),
 				);
 				newRunData = { [options.triggerNode]: [options.nodeData] };
 				executedNode = options.triggerNode;
@@ -182,7 +188,7 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 					// and halt the execution
 					if (!chatHasInputData && !chatHasPinData) {
 						workflowsStore.chatPartialExecutionDestinationNode = options.destinationNode;
-						workflowsStore.setPanelOpen('chat', true);
+						workflowsStore.toggleLogsPanelOpen(true);
 						return;
 					}
 				}
@@ -222,14 +228,14 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 				// Find for each start node the source data
 				let sourceData = get(runData, [name, 0, 'source', 0], null);
 				if (sourceData === null) {
-					const parentNodes = workflow.getParentNodes(name, NodeConnectionType.Main, 1);
+					const parentNodes = workflow.getParentNodes(name, NodeConnectionTypes.Main, 1);
 					const executeData = workflowHelpers.executeData(
 						parentNodes,
 						name,
-						NodeConnectionType.Main,
+						NodeConnectionTypes.Main,
 						0,
 					);
-					sourceData = get(executeData, ['source', NodeConnectionType.Main, 0], null);
+					sourceData = get(executeData, ['source', NodeConnectionTypes.Main, 0], null);
 				}
 				return {
 					name,
@@ -289,7 +295,7 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 			// that data which gets reused is already set and data of newly executed
 			// nodes can be added as it gets pushed in
 			const executionData: IExecutionResponse = {
-				id: '__IN_PROGRESS__',
+				id: IN_PROGRESS_EXECUTION_ID,
 				finished: false,
 				mode: 'manual',
 				status: 'running',
@@ -373,7 +379,7 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 			for (const directParentNode of directParentNodes) {
 				// Go over the parents of that node so that we can get a start
 				// node for each of the branches
-				const parentNodes = workflow.getParentNodes(directParentNode, NodeConnectionType.Main);
+				const parentNodes = workflow.getParentNodes(directParentNode, NodeConnectionTypes.Main);
 
 				// Add also the enabled direct parent to be checked
 				if (workflow.nodes[directParentNode].disabled) continue;
@@ -432,12 +438,13 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 				// execution finished before it could be stopped
 				const executedData = {
 					data: execution.data,
+					workflowData: workflowsStore.workflow,
 					finished: execution.finished,
 					mode: execution.mode,
 					startedAt: execution.startedAt,
 					stoppedAt: execution.stoppedAt,
-				} as IRun;
-				workflowsStore.setWorkflowExecutionData(executedData as IExecutionResponse);
+				} as IExecutionResponse;
+				workflowsStore.setWorkflowExecutionData(executedData);
 				toast.showMessage({
 					title: i18n.baseText('nodeView.showMessage.stopExecutionCatch.title'),
 					message: i18n.baseText('nodeView.showMessage.stopExecutionCatch.message'),
@@ -447,6 +454,15 @@ export function useRunWorkflow(useRunWorkflowOpts: { router: ReturnType<typeof u
 				toast.showError(error, i18n.baseText('nodeView.showError.stopExecution.title'));
 			}
 		} finally {
+			// Wait for websocket event to update the execution status to 'canceled'
+			for (let i = 0; i < 100; i++) {
+				if (workflowsStore.workflowExecutionData?.status !== 'running') {
+					break;
+				}
+
+				await new Promise(requestAnimationFrame);
+			}
+
 			workflowsStore.markExecutionAsStopped();
 		}
 	}

@@ -1,4 +1,14 @@
 import { RoleChangeRequestDto, SettingsUpdateRequestDto } from '@n8n/api-types';
+import {
+	GlobalScope,
+	Delete,
+	Get,
+	RestController,
+	Patch,
+	Licensed,
+	Body,
+	Param,
+} from '@n8n/decorators';
 import { Response } from 'express';
 import { Logger } from 'n8n-core';
 
@@ -11,27 +21,17 @@ import { ProjectRepository } from '@/databases/repositories/project.repository';
 import { SharedCredentialsRepository } from '@/databases/repositories/shared-credentials.repository';
 import { SharedWorkflowRepository } from '@/databases/repositories/shared-workflow.repository';
 import { UserRepository } from '@/databases/repositories/user.repository';
-import {
-	GlobalScope,
-	Delete,
-	Get,
-	RestController,
-	Patch,
-	Licensed,
-	Body,
-	Param,
-} from '@/decorators';
 import { BadRequestError } from '@/errors/response-errors/bad-request.error';
 import { ForbiddenError } from '@/errors/response-errors/forbidden.error';
 import { NotFoundError } from '@/errors/response-errors/not-found.error';
 import { EventService } from '@/events/event.service';
 import { ExternalHooks } from '@/external-hooks';
-import type { PublicUser } from '@/interfaces';
 import { listQueryMiddleware } from '@/middlewares';
 import { AuthenticatedRequest, ListQuery, UserRequest } from '@/requests';
 import { FolderService } from '@/services/folder.service';
 import { ProjectService } from '@/services/project.service.ee';
 import { UserService } from '@/services/user.service';
+import type { PublicUser } from '@/types-db';
 import { WorkflowService } from '@/workflows/workflow.service';
 
 @RestController('/users')
@@ -189,9 +189,9 @@ export class UsersController {
 		let transfereeId;
 
 		if (transferId) {
-			const transfereePersonalProject = await this.projectRepository.findOneBy({ id: transferId });
+			const transfereeProject = await this.projectRepository.findOneBy({ id: transferId });
 
-			if (!transfereePersonalProject) {
+			if (!transfereeProject) {
 				throw new NotFoundError(
 					'Request to delete a user failed because the transferee project was not found in DB',
 				);
@@ -199,8 +199,7 @@ export class UsersController {
 
 			const transferee = await this.userRepository.findOneByOrFail({
 				projectRelations: {
-					projectId: transfereePersonalProject.id,
-					role: 'project:personalOwner',
+					projectId: transfereeProject.id,
 				},
 			});
 
@@ -209,25 +208,23 @@ export class UsersController {
 			await this.userService.getManager().transaction(async (trx) => {
 				await this.workflowService.transferAll(
 					personalProjectToDelete.id,
-					transfereePersonalProject.id,
+					transfereeProject.id,
 					trx,
 				);
 				await this.credentialsService.transferAll(
 					personalProjectToDelete.id,
-					transfereePersonalProject.id,
+					transfereeProject.id,
 					trx,
 				);
 
 				await this.folderService.transferAllFoldersToProject(
 					personalProjectToDelete.id,
-					transfereePersonalProject.id,
+					transfereeProject.id,
 					trx,
 				);
 			});
 
-			await this.projectService.clearCredentialCanUseExternalSecretsCache(
-				transfereePersonalProject.id,
-			);
+			await this.projectService.clearCredentialCanUseExternalSecretsCache(transfereeProject.id);
 		}
 
 		const [ownedSharedWorkflows, ownedSharedCredentials] = await Promise.all([
@@ -296,7 +293,7 @@ export class UsersController {
 			throw new ForbiddenError(NO_OWNER_ON_OWNER);
 		}
 
-		await this.userService.update(targetUser.id, { role: payload.newRoleName });
+		await this.userService.changeUserRole(req.user, targetUser, payload);
 
 		this.eventService.emit('user-changed-role', {
 			userId: req.user.id,
