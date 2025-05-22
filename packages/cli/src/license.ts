@@ -342,6 +342,12 @@ export class License implements LicenseProvider {
 		return true;
 	}
 
+		isShowNonProdBanner() {
+		//  return this.isLicensed(LICENSE_FEATURES.SHOW_NON_PROD_BANNER);
+		return false;
+	}
+
+
 	/** @deprecated Use `LicenseState.isProjectRoleAdminLicensed` instead. */
 	isProjectRoleAdminLicensed() {
 		// return this.isLicensed(LICENSE_FEATURES.PROJECT_ROLE_ADMIN);
@@ -485,7 +491,7 @@ export class License implements LicenseProvider {
 			this.logger
 				.scoped(['scaling', 'multi-main-setup', 'license'])
 				.debug(
-					'License changed with no support for multi-main setup - no new followers will be allowed to init. To restore multi-main setup, please upgrade to a license that supports this feature.',
+					'License changed with `no` support for multi-main setup - no new followers will be allowed to init. To restore multi-main setup, please upgrade to a license that supports this feature.',
 				);
 		}
 	}
