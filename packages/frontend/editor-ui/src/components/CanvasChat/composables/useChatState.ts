@@ -6,7 +6,6 @@ import { useNodeHelpers } from '@/composables/useNodeHelpers';
 import { useRunWorkflow } from '@/composables/useRunWorkflow';
 import { VIEWS } from '@/constants';
 import { type INodeUi } from '@/Interface';
-import { useCanvasStore } from '@/stores/canvas.store';
 import { useNodeTypesStore } from '@/stores/nodeTypes.store';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 import { ChatOptionsSymbol, ChatSymbol } from '@n8n/chat/constants';
@@ -17,8 +16,8 @@ import { v4 as uuid } from 'uuid';
 import type { Ref } from 'vue';
 import { computed, provide, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { LOGS_PANEL_STATE } from '../types/logs';
 import { restoreChatHistory } from '@/components/CanvasChat/utils';
+import { useLogsStore } from '@/stores/logs.store';
 
 interface ChatState {
 	currentSessionId: Ref<string>;
@@ -31,11 +30,11 @@ interface ChatState {
 	displayExecution: (executionId: string) => void;
 }
 
-export function useChatState(isReadOnly: boolean, onWindowResize?: () => void): ChatState {
+export function useChatState(isReadOnly: boolean): ChatState {
 	const locale = useI18n();
 	const workflowsStore = useWorkflowsStore();
 	const nodeTypesStore = useNodeTypesStore();
-	const canvasStore = useCanvasStore();
+	const logsStore = useLogsStore();
 	const router = useRouter();
 	const nodeHelpers = useNodeHelpers();
 	const { runWorkflow } = useRunWorkflow({ router });
@@ -44,25 +43,15 @@ export function useChatState(isReadOnly: boolean, onWindowResize?: () => void): 
 	const currentSessionId = ref<string>(uuid().replace(/-/g, ''));
 
 	const previousChatMessages = computed(() => workflowsStore.getPastChatMessages);
-	const canvasNodes = computed(() => workflowsStore.allNodes);
-	const allConnections = computed(() => workflowsStore.allConnections);
-	const logsPanelState = computed(() => workflowsStore.logsPanelState);
 	const workflow = computed(() => workflowsStore.getCurrentWorkflow());
 
 	// Initialize features with injected dependencies
-	const {
-		chatTriggerNode,
-		connectedNode,
-		allowFileUploads,
-		allowedFilesMimeTypes,
-		setChatTriggerNode,
-		setConnectedNode,
-	} = useChatTrigger({
-		workflow,
-		canvasNodes,
-		getNodeByName: workflowsStore.getNodeByName,
-		getNodeType: nodeTypesStore.getNodeType,
-	});
+	const { chatTriggerNode, connectedNode, allowFileUploads, allowedFilesMimeTypes } =
+		useChatTrigger({
+			workflow,
+			getNodeByName: workflowsStore.getNodeByName,
+			getNodeType: nodeTypesStore.getNodeType,
+		});
 
 	const { sendMessage, isLoading } = useChatMessaging({
 		chatTrigger: chatTriggerNode,
@@ -134,37 +123,6 @@ export function useChatState(isReadOnly: boolean, onWindowResize?: () => void): 
 	provide(ChatSymbol, chatConfig);
 	provide(ChatOptionsSymbol, chatOptions);
 
-	// Watchers
-	watch(
-		() => logsPanelState.value,
-		(state) => {
-			if (state !== LOGS_PANEL_STATE.CLOSED) {
-				setChatTriggerNode();
-				setConnectedNode();
-
-				setTimeout(() => {
-					onWindowResize?.();
-					chatEventBus.emit('focusInput');
-				}, 0);
-			}
-		},
-		{ immediate: true },
-	);
-
-	watch(
-		() => allConnections.value,
-		() => {
-			if (canvasStore.isLoading) return;
-			setTimeout(() => {
-				if (!chatTriggerNode.value) {
-					setChatTriggerNode();
-				}
-				setConnectedNode();
-			}, 0);
-		},
-		{ deep: true },
-	);
-
 	// This function creates a promise that resolves when the workflow execution completes
 	// It's used to handle the loading state while waiting for the workflow to finish
 	async function createExecutionPromise() {
@@ -210,7 +168,7 @@ export function useChatState(isReadOnly: boolean, onWindowResize?: () => void): 
 		messages.value = [];
 		currentSessionId.value = uuid().replace(/-/g, '');
 
-		if (logsPanelState.value !== LOGS_PANEL_STATE.CLOSED) {
+		if (logsStore.isOpen) {
 			chatEventBus.emit('focusInput');
 		}
 	}
