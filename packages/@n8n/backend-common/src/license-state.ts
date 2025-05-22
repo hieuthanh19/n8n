@@ -68,8 +68,7 @@ export class LicenseState {
 	}
 
 	isAiAssistantLicensed() {
-		// return this.isLicensed('feat:aiAssistant');
-		return true;
+		return this.isLicensed('feat:aiAssistant');
 	}
 
 	isAskAiLicensed() {
