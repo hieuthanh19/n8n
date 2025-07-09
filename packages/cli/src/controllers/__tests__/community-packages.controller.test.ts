@@ -1,7 +1,6 @@
-import type { CommunityNodeAttributes } from '@n8n/api-types';
+import type { CommunityNodeType } from '@n8n/api-types';
 import type { InstalledPackages } from '@n8n/db';
 import { mock } from 'jest-mock-extended';
-import type { INodeTypeDescription } from 'n8n-workflow';
 
 import { CommunityPackagesController } from '@/controllers/community-packages.controller';
 import type { NodeRequest } from '@/requests';
@@ -46,7 +45,7 @@ describe('CommunityPackagesController', () => {
 				body: { name: 'n8n-nodes-test', verify: true, version: '1.0.0' },
 			});
 			communityNodeTypesService.findVetted.mockReturnValue(
-				mock<CommunityNodeAttributes & { nodeDescription: INodeTypeDescription }>({
+				mock<CommunityNodeType>({
 					checksum: 'checksum',
 				}),
 			);
@@ -79,6 +78,46 @@ describe('CommunityPackagesController', () => {
 					packageVersion: '1.0.0',
 				}),
 			);
+		});
+	});
+
+	describe('updatePackage', () => {
+		it('should use the version from the request body when updating a package', async () => {
+			const req = mock<NodeRequest.Update>({
+				body: {
+					name: 'n8n-nodes-test',
+					version: '2.0.0',
+					checksum: 'a893hfdsy7399',
+				},
+				user: { id: 'user1' },
+			});
+
+			const previouslyInstalledPackage = mock<InstalledPackages>({
+				installedNodes: [{ type: 'testNode', latestVersion: 1, name: 'testNode' }],
+				installedVersion: '1.0.0',
+				authorName: 'Author',
+				authorEmail: 'author@example.com',
+			});
+			const newInstalledPackage = mock<InstalledPackages>({
+				installedNodes: [{ type: 'testNode', latestVersion: 1, name: 'testNode' }],
+				installedVersion: '2.0.0',
+				authorName: 'Author',
+				authorEmail: 'author@example.com',
+			});
+
+			communityPackagesService.findInstalledPackage.mockResolvedValue(previouslyInstalledPackage);
+			communityPackagesService.updatePackage.mockResolvedValue(newInstalledPackage);
+
+			const result = await controller.updatePackage(req);
+
+			expect(communityPackagesService.updatePackage).toHaveBeenCalledWith(
+				'n8n-nodes-test',
+				previouslyInstalledPackage,
+				'2.0.0',
+				'a893hfdsy7399',
+			);
+
+			expect(result).toBe(newInstalledPackage);
 		});
 	});
 });

@@ -6,7 +6,7 @@ import { useCanvasNodeHover } from '@/composables/useCanvasNodeHover';
 import { useCanvasTraversal } from '@/composables/useCanvasTraversal';
 import type { ContextMenuAction, ContextMenuTarget } from '@/composables/useContextMenu';
 import { useContextMenu } from '@/composables/useContextMenu';
-import { useKeybindings } from '@/composables/useKeybindings';
+import { type KeyMap, useKeybindings } from '@/composables/useKeybindings';
 import type { PinDataSource } from '@/composables/usePinnedData';
 import { CanvasKey } from '@/constants';
 import type { NodeCreatorOpenSource } from '@/Interface';
@@ -19,7 +19,7 @@ import type {
 	CanvasNodeData,
 } from '@/types';
 import { CanvasNodeRenderType } from '@/types';
-import { getMousePosition, GRID_SIZE } from '@/utils/nodeViewUtils';
+import { updateViewportToContainNodes, getMousePosition, GRID_SIZE } from '@/utils/nodeViewUtils';
 import { isPresent } from '@/utils/typesUtils';
 import { useDeviceSupport } from '@n8n/composables/useDeviceSupport';
 import { useShortKeyPress } from '@n8n/composables/useShortKeyPress';
@@ -53,7 +53,9 @@ import CanvasBackground from './elements/background/CanvasBackground.vue';
 import CanvasArrowHeadMarker from './elements/edges/CanvasArrowHeadMarker.vue';
 import Edge from './elements/edges/CanvasEdge.vue';
 import Node from './elements/nodes/CanvasNode.vue';
-import { useViewportAutoAdjust } from '@/components/canvas/composables/useViewportAutoAdjust';
+import { useViewportAutoAdjust } from './composables/useViewportAutoAdjust';
+import { isOutsideSelected } from '@/utils/htmlUtils';
+import { useExperimentalNdvStore } from './experimental/experimentalNdv.store';
 
 const $style = useCssModule();
 
@@ -72,6 +74,7 @@ const emit = defineEmits<{
 	'update:logs-open': [open?: boolean];
 	'update:logs:input-open': [open?: boolean];
 	'update:logs:output-open': [open?: boolean];
+	'update:has-range-selection': [isActive: boolean];
 	'click:node': [id: string, position: XYPosition];
 	'click:node:add': [id: string, handle: string];
 	'run:node': [id: string];
@@ -100,10 +103,12 @@ const emit = defineEmits<{
 	'create:workflow': [];
 	'drag-and-drop': [position: XYPosition, event: DragEvent];
 	'tidy-up': [CanvasLayoutEvent];
+	'toggle:focus-panel': [];
 	'viewport:change': [viewport: ViewportTransform, dimensions: Dimensions];
 	'selection:end': [position: XYPosition];
 	'open:sub-workflow': [nodeId: string];
 	'start-chat': [];
+	'extract-workflow': [ids: string[]];
 }>();
 
 const props = withDefaults(
@@ -153,6 +158,7 @@ const {
 	viewport,
 	dimensions,
 	nodesSelectionActive,
+	userSelectionRect,
 	setViewport,
 	onEdgeMouseLeave,
 	onEdgeMouseEnter,
@@ -168,6 +174,8 @@ const {
 	getUpstreamNodes,
 } = useCanvasTraversal(vueFlow);
 const { layout } = useCanvasLayout({ id: props.id });
+
+const experimentalNdvStore = useExperimentalNdvStore();
 
 const isPaneReady = ref(false);
 
@@ -275,9 +283,12 @@ function selectUpstreamNodes(id: string) {
 }
 
 const keyMap = computed(() => {
-	const readOnlyKeymap = {
+	const readOnlyKeymap: KeyMap = {
 		ctrl_shift_o: emitWithLastSelectedNode((id) => emit('open:sub-workflow', id)),
-		ctrl_c: emitWithSelectedNodes((ids) => emit('copy:nodes', ids)),
+		ctrl_c: {
+			disabled: () => isOutsideSelected(viewportRef.value),
+			run: emitWithSelectedNodes((ids) => emit('copy:nodes', ids)),
+		},
 		enter: emitWithLastSelectedNode((id) => onSetNodeActivated(id)),
 		ctrl_a: () => addSelectedNodes(graphNodes.value),
 		// Support both key and code for zooming in and out
@@ -298,7 +309,7 @@ const keyMap = computed(() => {
 
 	if (props.readOnly) return readOnlyKeymap;
 
-	const fullKeymap = {
+	const fullKeymap: KeyMap = {
 		...readOnlyKeymap,
 		ctrl_x: emitWithSelectedNodes((ids) => emit('cut:nodes', ids)),
 		'delete|backspace': emitWithSelectedNodes((ids) => emit('delete:nodes', ids)),
@@ -308,10 +319,12 @@ const keyMap = computed(() => {
 		f2: emitWithLastSelectedNode((id) => emit('update:node:name', id)),
 		tab: () => emit('create:node', 'tab'),
 		shift_s: () => emit('create:sticky'),
+		shift_f: () => emit('toggle:focus-panel'),
 		ctrl_alt_n: () => emit('create:workflow'),
 		ctrl_enter: () => emit('run:workflow'),
 		ctrl_s: () => emit('save:workflow'),
 		shift_alt_t: async () => await onTidyUp({ source: 'keyboard-shortcut' }),
+		alt_x: emitWithSelectedNodes((ids) => emit('extract-workflow', ids)),
 		c: () => emit('start-chat'),
 	};
 	return fullKeymap;
@@ -402,9 +415,21 @@ function onSelectNode() {
 	emit('update:node:selected', lastSelectedNode.value?.id);
 }
 
-function onSelectNodes({ ids }: CanvasEventBusEvents['nodes:select']) {
+function onSelectNodes({ ids, panIntoView }: CanvasEventBusEvents['nodes:select']) {
 	clearSelectedNodes();
 	addSelectedNodes(ids.map(findNode).filter(isPresent));
+
+	if (panIntoView) {
+		const nodes = ids.map(findNode).filter(isPresent);
+
+		if (nodes.length === 0) {
+			return;
+		}
+
+		const newViewport = updateViewportToContainNodes(viewport.value, dimensions.value, nodes, 100);
+
+		void setViewport(newViewport, { duration: 200 });
+	}
 }
 
 function onToggleNodeEnabled(id: string) {
@@ -681,6 +706,8 @@ async function onContextMenuAction(action: ContextMenuAction, nodeIds: string[])
 			return props.eventBus.emit('nodes:action', { ids: nodeIds, action: 'update:sticky:color' });
 		case 'tidy_up':
 			return await onTidyUp({ source: 'context-menu' });
+		case 'extract_sub_workflow':
+			return emit('extract-workflow', nodeIds);
 		case 'open_sub_workflow': {
 			return emit('open:sub-workflow', nodeIds[0]);
 		}
@@ -798,6 +825,10 @@ watch(() => props.readOnly, setReadonly, {
 	immediate: true,
 });
 
+watch([nodesSelectionActive, userSelectionRect], ([isActive, rect]) =>
+	emit('update:has-range-selection', isActive || (rect?.width ?? 0) > 0 || (rect?.height ?? 0) > 0),
+);
+
 /**
  * Provide
  */
@@ -826,7 +857,7 @@ provide(CanvasKey, {
 		snap-to-grid
 		:snap-grid="[GRID_SIZE, GRID_SIZE]"
 		:min-zoom="0"
-		:max-zoom="4"
+		:max-zoom="experimentalNdvStore.isEnabled ? experimentalNdvStore.maxCanvasZoom : 4"
 		:selection-key-code="selectionKeyCode"
 		:zoom-activation-key-code="panningKeyCode"
 		:pan-activation-key-code="panningKeyCode"

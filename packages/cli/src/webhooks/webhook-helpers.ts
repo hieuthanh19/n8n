@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/prefer-optional-chain */
-/* eslint-disable @typescript-eslint/no-shadow */
+
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable id-denylist */
 /* eslint-disable prefer-spread */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
+import { Logger } from '@n8n/backend-common';
 import { GlobalConfig } from '@n8n/config';
 import type { Project } from '@n8n/db';
 import { Container } from '@n8n/di';
 import type express from 'express';
 import get from 'lodash/get';
-import { BinaryDataService, ErrorReporter, Logger } from 'n8n-core';
+import { BinaryDataService, ErrorReporter } from 'n8n-core';
 import type {
 	IBinaryData,
 	IBinaryKeyData,
@@ -104,6 +105,7 @@ export function getWorkflowWebhooks(
 	return returnData;
 }
 
+// eslint-disable-next-line complexity
 export function autoDetectResponseMode(
 	workflowStartNode: INode,
 	workflow: Workflow,
@@ -120,6 +122,21 @@ export function autoDetectResponseMode(
 			}
 
 			if ([FORM_NODE_TYPE, WAIT_NODE_TYPE].includes(node.type) && !node.disabled) {
+				return 'formPage';
+			}
+		}
+	}
+
+	// If there are form nodes connected to a current form node we're dealing with a multipage form
+	// and we need to return the formPage response mode when a second page of the form gets submitted
+	// to be able to show potential form errors correctly.
+	if (workflowStartNode.type === FORM_NODE_TYPE && method === 'POST') {
+		const connectedNodes = workflow.getChildNodes(workflowStartNode.name);
+
+		for (const nodeName of connectedNodes) {
+			const node = workflow.nodes[nodeName];
+
+			if (node.type === FORM_NODE_TYPE && !node.disabled) {
 				return 'formPage';
 			}
 		}
@@ -354,40 +371,16 @@ export async function executeWebhook(
 		additionalData.executionId = executionId;
 	}
 
-	//check if response mode should be set automatically, e.g. multipage form
-	const responseMode =
-		autoDetectResponseMode(workflowStartNode, workflow, req.method) ??
-		(workflow.expression.getSimpleParameterValue(
-			workflowStartNode,
-			webhookData.webhookDescription.responseMode,
-			executionMode,
-			additionalKeys,
-			undefined,
-			'onReceived',
-		) as WebhookResponseMode);
-
-	const responseCode = workflow.expression.getSimpleParameterValue(
+	const { responseMode, responseCode, responseData } = evaluateResponseOptions(
 		workflowStartNode,
-		webhookData.webhookDescription.responseCode as string,
+		workflow,
+		req,
+		webhookData,
 		executionMode,
 		additionalKeys,
-		undefined,
-		200,
-	) as number;
+	);
 
-	// This parameter is used for two different purposes:
-	// 1. as arbitrary string input defined in the workflow in the "respond immediately" mode,
-	// 2. as well as WebhookResponseData config in all the other modes
-	const responseData = workflow.expression.getComplexParameterValue(
-		workflowStartNode,
-		webhookData.webhookDescription.responseData,
-		executionMode,
-		additionalKeys,
-		undefined,
-		'firstEntryJson',
-	) as WebhookResponseData | string | undefined;
-
-	if (!['onReceived', 'lastNode', 'responseNode', 'formPage'].includes(responseMode)) {
+	if (!['onReceived', 'lastNode', 'responseNode', 'formPage', 'streaming'].includes(responseMode)) {
 		// If the mode is not known we error. Is probably best like that instead of using
 		// the default that people know as early as possible (probably already testing phase)
 		// that something does not resolve properly.
@@ -400,21 +393,6 @@ export async function executeWebhook(
 	additionalData.httpRequest = req;
 	additionalData.httpResponse = res;
 
-	let binaryData;
-
-	const nodeVersion = workflowStartNode.typeVersion;
-	if (nodeVersion === 1) {
-		// binaryData option is removed in versions higher than 1
-		binaryData = workflow.expression.getSimpleParameterValue(
-			workflowStartNode,
-			'={{$parameter["options"]["binaryData"]}}',
-			executionMode,
-			additionalKeys,
-			undefined,
-			false,
-		);
-	}
-
 	let didSendResponse = false;
 	let runExecutionDataMerge = {};
 	try {
@@ -422,28 +400,7 @@ export async function executeWebhook(
 		// the workflow should be executed or not
 		let webhookResultData: IWebhookResponseData;
 
-		// if `Webhook` or `Wait` node, and binaryData is enabled, skip pre-parse the request-body
-		// always falsy for versions higher than 1
-		if (!binaryData) {
-			const { contentType } = req;
-			if (contentType === 'multipart/form-data') {
-				req.body = await parseFormData(req);
-			} else {
-				if (nodeVersion > 1) {
-					if (
-						contentType?.startsWith('application/json') ||
-						contentType?.startsWith('text/plain') ||
-						contentType?.startsWith('application/x-www-form-urlencoded') ||
-						contentType?.endsWith('/xml') ||
-						contentType?.endsWith('+xml')
-					) {
-						await parseBody(req);
-					}
-				} else {
-					await parseBody(req);
-				}
-			}
-		}
+		await parseRequestBody(req, workflowStartNode, workflow, executionMode, additionalKeys);
 
 		// TODO: remove this hack, and make sure that execution data is properly created before the MCP trigger is executed
 		if (workflowStartNode.type === MCP_TRIGGER_NODE_TYPE) {
@@ -546,9 +503,12 @@ export async function executeWebhook(
 					| undefined;
 			};
 
-			if (responseHeaders !== undefined && responseHeaders.entries !== undefined) {
-				for (const item of responseHeaders.entries) {
-					res.setHeader(item.name, item.value);
+			if (!res.headersSent) {
+				// Only set given headers if they haven't been sent yet, e.g. for streaming
+				if (responseHeaders?.entries !== undefined) {
+					for (const item of responseHeaders.entries) {
+						res.setHeader(item.name, item.value);
+					}
 				}
 			}
 		}
@@ -634,6 +594,17 @@ export async function executeWebhook(
 				executionId,
 				workflow,
 			);
+		}
+
+		if (responseMode === 'streaming') {
+			Container.get(Logger).debug(
+				`Execution of workflow "${workflow.name}" from with ID ${executionId} is set to streaming`,
+				{ executionId },
+			);
+			// TODO: Add check for streaming nodes here
+			runData.httpResponse = res;
+			runData.streamingEnabled = true;
+			didSendResponse = true;
 		}
 
 		// Start now to run the workflow
@@ -891,5 +862,104 @@ export async function executeWebhook(
 		if (didSendResponse) throw error;
 		responseCallback(error, {});
 		return;
+	}
+}
+
+/**
+ * Evaluates the response mode, code and data for a webhook node
+ */
+function evaluateResponseOptions(
+	workflowStartNode: INode,
+	workflow: Workflow,
+	req: WebhookRequest,
+	webhookData: IWebhookData,
+	executionMode: WorkflowExecuteMode,
+	additionalKeys: IWorkflowDataProxyAdditionalKeys,
+) {
+	//check if response mode should be set automatically, e.g. multipage form
+	const responseMode =
+		autoDetectResponseMode(workflowStartNode, workflow, req.method) ??
+		(workflow.expression.getSimpleParameterValue(
+			workflowStartNode,
+			webhookData.webhookDescription.responseMode,
+			executionMode,
+			additionalKeys,
+			undefined,
+			'onReceived',
+		) as WebhookResponseMode);
+
+	const responseCode = workflow.expression.getSimpleParameterValue(
+		workflowStartNode,
+		webhookData.webhookDescription.responseCode as string,
+		executionMode,
+		additionalKeys,
+		undefined,
+		200,
+	) as number;
+
+	// This parameter is used for two different purposes:
+	// 1. as arbitrary string input defined in the workflow in the "respond immediately" mode,
+	// 2. as well as WebhookResponseData config in all the other modes
+	const responseData = workflow.expression.getComplexParameterValue(
+		workflowStartNode,
+		webhookData.webhookDescription.responseData,
+		executionMode,
+		additionalKeys,
+		undefined,
+		'firstEntryJson',
+	) as WebhookResponseData | string | undefined;
+
+	return { responseMode, responseCode, responseData };
+}
+
+/**
+ * Parses the request body (form, xml, json, form-urlencoded, etc.) if needed
+ * into the `req.body` property.
+ */
+async function parseRequestBody(
+	req: WebhookRequest,
+	workflowStartNode: INode,
+	workflow: Workflow,
+	executionMode: WorkflowExecuteMode,
+	additionalKeys: IWorkflowDataProxyAdditionalKeys,
+) {
+	let binaryData: string | number | boolean | unknown[] | undefined;
+
+	const nodeVersion = workflowStartNode.typeVersion;
+	if (nodeVersion === 1) {
+		// binaryData option is removed in versions higher than 1
+		binaryData = workflow.expression.getSimpleParameterValue(
+			workflowStartNode,
+			'={{$parameter["options"]["binaryData"]}}',
+			executionMode,
+			additionalKeys,
+			undefined,
+			false,
+		);
+	}
+
+	// if `Webhook` or `Wait` node, and binaryData is enabled, skip pre-parse the request-body
+	// always falsy for versions higher than 1
+	if (binaryData) {
+		return;
+	}
+
+	const { contentType } = req;
+	if (contentType === 'multipart/form-data') {
+		req.body = await parseFormData(req);
+	} else {
+		if (nodeVersion > 1) {
+			if (
+				contentType?.startsWith('application/json') ||
+				contentType?.startsWith('text/plain') ||
+				contentType?.startsWith('application/x-www-form-urlencoded') ||
+				contentType?.endsWith('/xml') ||
+				contentType?.endsWith('+xml')
+			) {
+				await parseBody(req);
+			}
+		} else {
+			await parseBody(req);
+		}
 	}
 }

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { useI18n } from '@/composables/useI18n';
+import { useI18n } from '@n8n/i18n';
 import { computed } from 'vue';
 import { useClipboard } from '@/composables/useClipboard';
 import { useToast } from '@/composables/useToast';
@@ -17,7 +17,7 @@ import type {
 } from 'n8n-workflow';
 import { sanitizeHtml } from '@/utils/htmlUtils';
 import { MAX_DISPLAY_DATA_SIZE, NEW_ASSISTANT_SESSION_MODAL } from '@/constants';
-import type { BaseTextKey } from '@/plugins/i18n';
+import type { BaseTextKey } from '@n8n/i18n';
 import { useAssistantStore } from '@/stores/assistant.store';
 import type { ChatRequest } from '@/types/assistant.types';
 import InlineAskAssistantButton from '@n8n/design-system/components/InlineAskAssistantButton/InlineAskAssistantButton.vue';
@@ -462,9 +462,9 @@ async function onAskAssistantClick() {
 				>
 					<div class="copy-button">
 						<N8nIconButton
-							icon="copy"
+							icon="files"
 							type="secondary"
-							size="mini"
+							size="small"
 							:text="true"
 							transparent-background="transparent"
 							@click="copyErrorDetails"
@@ -484,7 +484,7 @@ async function onAskAssistantClick() {
 					class="node-error-view__details"
 				>
 					<summary class="node-error-view__details-summary">
-						<font-awesome-icon class="node-error-view__details-icon" icon="angle-right" />
+						<n8n-icon class="node-error-view__details-icon" icon="chevron-right" />
 						{{
 							i18n.baseText('nodeErrorView.details.from', {
 								interpolate: { node: `${nodeDefaultName}` },
@@ -539,7 +539,7 @@ async function onAskAssistantClick() {
 
 				<details class="node-error-view__details">
 					<summary class="node-error-view__details-summary">
-						<font-awesome-icon class="node-error-view__details-icon" icon="angle-right" />
+						<n8n-icon class="node-error-view__details-icon" icon="chevron-right" />
 						{{ i18n.baseText('nodeErrorView.details.info') }}
 					</summary>
 					<div class="node-error-view__details-content">

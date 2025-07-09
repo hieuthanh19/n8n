@@ -1,15 +1,23 @@
-import type { Project, ProjectRole } from '@n8n/db';
-import type { User } from '@n8n/db';
-import { FolderRepository } from '@n8n/db';
-import { ProjectRepository } from '@n8n/db';
-import { WorkflowRepository } from '@n8n/db';
+import { faker } from '@faker-js/faker';
+import {
+	createWorkflow,
+	getWorkflowSharing,
+	randomCredentialPayload,
+	createTeamProject,
+	getPersonalProject,
+	linkUserToProject,
+	testDb,
+	mockInstance,
+} from '@n8n/backend-test-utils';
+import type { Project, ProjectRole, User } from '@n8n/db';
+import { FolderRepository, ProjectRepository, WorkflowRepository } from '@n8n/db';
 import { Container } from '@n8n/di';
 import { DateTime } from 'luxon';
 import { ApplicationError, PROJECT_ROOT } from 'n8n-workflow';
 
 import { ActiveWorkflowManager } from '@/active-workflow-manager';
-import { mockInstance } from '@test/mocking';
 import {
+	createCredentials,
 	getCredentialSharings,
 	saveCredential,
 	shareCredentialWithProjects,
@@ -17,12 +25,8 @@ import {
 } from '@test-integration/db/credentials';
 import { createFolder } from '@test-integration/db/folders';
 import { createTag } from '@test-integration/db/tags';
-import { createWorkflow, getWorkflowSharing } from '@test-integration/db/workflows';
-import { randomCredentialPayload } from '@test-integration/random';
 
-import { createTeamProject, getPersonalProject, linkUserToProject } from '../shared/db/projects';
 import { createOwner, createMember, createUser, createAdmin } from '../shared/db/users';
-import * as testDb from '../shared/test-db';
 import type { SuperAgentTest } from '../shared/types';
 import * as utils from '../shared/utils/';
 
@@ -306,6 +310,111 @@ describe('GET /projects/:projectId/folders/:folderId/tree', () => {
 	});
 });
 
+describe('GET /projects/:projectId/folders/:folderId/credentials', () => {
+	test('should not get folder credentials when project does not exist', async () => {
+		await authOwnerAgent
+			.get('/projects/non-existing-id/folders/some-folder-id/credentials')
+			.expect(403);
+	});
+
+	test('should not get folder credentials when folder does not exist', async () => {
+		const project = await createTeamProject('test project', owner);
+
+		await authOwnerAgent
+			.get(`/projects/${project.id}/folders/non-existing-folder/credentials`)
+			.expect(404);
+	});
+
+	test('should not get folder credentials if user has no access to project', async () => {
+		const project = await createTeamProject('test project', owner);
+		const folder = await createFolder(project);
+
+		await authMemberAgent
+			.get(`/projects/${project.id}/folders/${folder.id}/credentials`)
+			.expect(403);
+	});
+
+	test("should not allow getting folder credentials from another user's personal project", async () => {
+		const ownerPersonalProject = await projectRepository.getPersonalProjectForUserOrFail(owner.id);
+		const folder = await createFolder(ownerPersonalProject);
+
+		await authMemberAgent
+			.get(`/projects/${ownerPersonalProject.id}/folders/${folder.id}/credentials`)
+			.expect(403);
+	});
+
+	test('should get all used credentials from workflows within the folder and subfolders', async () => {
+		const project = await createTeamProject('test', owner);
+		const rootFolder = await createFolder(project, { name: 'Root' });
+
+		const childFolder1 = await createFolder(project, {
+			name: 'Child 1',
+			parentFolder: rootFolder,
+		});
+
+		await createFolder(project, {
+			name: 'Child 2',
+			parentFolder: rootFolder,
+		});
+
+		const grandchildFolder = await createFolder(project, {
+			name: 'Grandchild',
+			parentFolder: childFolder1,
+		});
+
+		for (const folder of [rootFolder, childFolder1, grandchildFolder]) {
+			const credential = await createCredentials(
+				{
+					name: `Test credential ${folder.name}`,
+					data: '',
+					type: 'test',
+				},
+				project,
+			);
+
+			await createWorkflow(
+				{
+					name: 'Test Workflow',
+					parentFolder: folder,
+					active: false,
+					nodes: [
+						{
+							parameters: {},
+							type: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+							typeVersion: 1.2,
+							position: [0, 0],
+							id: faker.string.uuid(),
+							name: 'OpenAI Chat Model',
+							credentials: {
+								openAiApi: {
+									id: credential.id,
+									name: credential.name,
+								},
+							},
+						},
+					],
+				},
+				owner,
+			);
+		}
+
+		const response = await authOwnerAgent
+			.get(`/projects/${project.id}/folders/${childFolder1.id}/credentials`)
+			.expect(200);
+
+		expect(response.body.data).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: expect.stringContaining('Test credential Child 1'),
+				}),
+				expect.objectContaining({
+					name: expect.stringContaining('Test credential Grandchild'),
+				}),
+			]),
+		);
+	});
+});
+
 describe('PATCH /projects/:projectId/folders/:folderId', () => {
 	test('should not update folder when project does not exist', async () => {
 		const payload = {
@@ -569,7 +678,7 @@ describe('PATCH /projects/:projectId/folders/:folderId', () => {
 		});
 
 		// Verify initial state
-		let folder = await folderRepository.findOne({
+		const folder = await folderRepository.findOne({
 			where: { id: folderToMove.id },
 			relations: ['parentFolder'],
 		});
@@ -658,10 +767,12 @@ describe('PATCH /projects/:projectId/folders/:folderId', () => {
 			parentFolderId: folder.id,
 		};
 
-		await authOwnerAgent
+		const response = await authOwnerAgent
 			.patch(`/projects/${project.id}/folders/${folder.id}`)
 			.send(payload)
 			.expect(400);
+
+		expect(response.body.message).toBe('Cannot set a folder as its own parent');
 
 		const folderInDb = await folderRepository.findOne({
 			where: { id: folder.id },
@@ -670,6 +781,89 @@ describe('PATCH /projects/:projectId/folders/:folderId', () => {
 
 		expect(folderInDb).toBeDefined();
 		expect(folderInDb?.parentFolder).toBeNull();
+	});
+
+	test("should not allow setting folder's parent to a folder that is a direct child", async () => {
+		const project = await createTeamProject(undefined, owner);
+
+		// A
+		// └── B
+		//     └── C
+		const folderA = await createFolder(project, { name: 'A' });
+		const folderB = await createFolder(project, {
+			name: 'B',
+			parentFolder: folderA,
+		});
+		const folderC = await createFolder(project, {
+			name: 'C',
+			parentFolder: folderB,
+		});
+
+		// Attempt to make the parent of B its child C
+		const payload = {
+			parentFolderId: folderC.id,
+		};
+
+		const response = await authOwnerAgent
+			.patch(`/projects/${project.id}/folders/${folderB.id}`)
+			.send(payload)
+			.expect(400);
+
+		expect(response.body.message).toBe(
+			"Cannot set a folder's parent to a folder that is a descendant of the current folder",
+		);
+
+		const folderBInDb = await folderRepository.findOne({
+			where: { id: folderB.id },
+			relations: ['parentFolder'],
+		});
+
+		expect(folderBInDb).toBeDefined();
+		expect(folderBInDb?.parentFolder?.id).toBe(folderA.id);
+	});
+
+	test("should not allow setting folder's parent to a folder that is a descendant", async () => {
+		const project = await createTeamProject(undefined, owner);
+
+		// A
+		// └── B
+		//     └── C
+		//         └── D
+		const folderA = await createFolder(project, { name: 'A' });
+		const folderB = await createFolder(project, {
+			name: 'B',
+			parentFolder: folderA,
+		});
+		const folderC = await createFolder(project, {
+			name: 'C',
+			parentFolder: folderB,
+		});
+		const folderD = await createFolder(project, {
+			name: 'D',
+			parentFolder: folderC,
+		});
+
+		// Attempt to make the parent of A the descendant D
+		const payload = {
+			parentFolderId: folderD.id,
+		};
+
+		const response = await authOwnerAgent
+			.patch(`/projects/${project.id}/folders/${folderA.id}`)
+			.send(payload)
+			.expect(400);
+
+		expect(response.body.message).toBe(
+			"Cannot set a folder's parent to a folder that is a descendant of the current folder",
+		);
+
+		const folderAInDb = await folderRepository.findOne({
+			where: { id: folderA.id },
+			relations: ['parentFolder'],
+		});
+
+		expect(folderAInDb).toBeDefined();
+		expect(folderAInDb?.parentFolder?.id).not.toBeDefined();
 	});
 });
 

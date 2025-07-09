@@ -1,11 +1,11 @@
 import type { PushMessage } from '@n8n/api-types';
+import { Logger } from '@n8n/backend-common';
 import type { BooleanLicenseFeature, NumericLicenseFeature } from '@n8n/constants';
 import { LICENSE_FEATURES, LICENSE_QUOTAS, UNLIMITED_LICENSE_QUOTA } from '@n8n/constants';
-import { AuthUserRepository, SettingsRepository, UserRepository } from '@n8n/db';
+import { SettingsRepository, UserRepository } from '@n8n/db';
 import { Patch, Post, RestController } from '@n8n/decorators';
 import { Container } from '@n8n/di';
 import { Request } from 'express';
-import { Logger } from 'n8n-core';
 import { v4 as uuid } from 'uuid';
 
 import { ActiveWorkflowManager } from '@/active-workflow-manager';
@@ -105,6 +105,8 @@ export class E2EController {
 		[LICENSE_FEATURES.INSIGHTS_VIEW_DASHBOARD]: false,
 		[LICENSE_FEATURES.INSIGHTS_VIEW_HOURLY_DATA]: false,
 		[LICENSE_FEATURES.API_KEY_SCOPES]: false,
+		[LICENSE_FEATURES.OIDC]: false,
+		[LICENSE_FEATURES.MFA_ENFORCEMENT]: false,
 	};
 
 	private static readonly numericFeaturesDefaults: Record<NumericLicenseFeature, number> = {
@@ -117,6 +119,7 @@ export class E2EController {
 		[LICENSE_QUOTAS.INSIGHTS_MAX_HISTORY_DAYS]: 7,
 		[LICENSE_QUOTAS.INSIGHTS_RETENTION_MAX_AGE_DAYS]: 30,
 		[LICENSE_QUOTAS.INSIGHTS_RETENTION_PRUNE_INTERVAL_DAYS]: 180,
+		[LICENSE_QUOTAS.WORKFLOWS_WITH_EVALUATION_LIMIT]: 1,
 	};
 
 	private numericFeatures: Record<NumericLicenseFeature, number> = {
@@ -137,6 +140,8 @@ export class E2EController {
 			E2EController.numericFeaturesDefaults[LICENSE_QUOTAS.INSIGHTS_RETENTION_MAX_AGE_DAYS],
 		[LICENSE_QUOTAS.INSIGHTS_RETENTION_PRUNE_INTERVAL_DAYS]:
 			E2EController.numericFeaturesDefaults[LICENSE_QUOTAS.INSIGHTS_RETENTION_PRUNE_INTERVAL_DAYS],
+		[LICENSE_QUOTAS.WORKFLOWS_WITH_EVALUATION_LIMIT]:
+			E2EController.numericFeaturesDefaults[LICENSE_QUOTAS.WORKFLOWS_WITH_EVALUATION_LIMIT],
 	};
 
 	constructor(
@@ -149,7 +154,6 @@ export class E2EController {
 		private readonly passwordUtility: PasswordUtility,
 		private readonly eventBus: MessageEventBus,
 		private readonly userRepository: UserRepository,
-		private readonly authUserRepository: AuthUserRepository,
 	) {
 		license.isLicensed = (feature: BooleanLicenseFeature) => this.enabledFeatures[feature] ?? false;
 
@@ -226,14 +230,20 @@ export class E2EController {
 	}
 
 	private async truncateAll() {
+		const { connection } = this.settingsRepo.manager;
+		const dbType = connection.options.type;
 		for (const table of tablesToTruncate) {
 			try {
-				const { connection } = this.settingsRepo.manager;
-				await connection.query(
-					`DELETE FROM ${table}; DELETE FROM sqlite_sequence WHERE name=${table};`,
-				);
+				if (dbType === 'postgres') {
+					await connection.query(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE;`);
+				} else {
+					await connection.query(`DELETE FROM "${table}";`);
+					if (dbType === 'sqlite') {
+						await connection.query(`DELETE FROM sqlite_sequence WHERE name = '${table}';`);
+					}
+				}
 			} catch (error) {
-				Container.get(Logger).warn('Dropping Table for E2E Reset error', {
+				Container.get(Logger).warn(`Dropping Table "${table}" for E2E Reset error`, {
 					error: error as Error,
 				});
 			}
@@ -280,7 +290,7 @@ export class E2EController {
 			const { encryptedRecoveryCodes, encryptedSecret } =
 				this.mfaService.encryptSecretAndRecoveryCodes(owner.mfaSecret, owner.mfaRecoveryCodes);
 
-			await this.authUserRepository.update(newOwner.user.id, {
+			await this.userRepository.update(newOwner.user.id, {
 				mfaSecret: encryptedSecret,
 				mfaRecoveryCodes: encryptedRecoveryCodes,
 			});

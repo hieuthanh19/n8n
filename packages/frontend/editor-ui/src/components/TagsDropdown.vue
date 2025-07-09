@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onClickOutside } from '@vueuse/core';
-import type { ITag } from '@/Interface';
+import type { ITag } from '@n8n/rest-api-client/api/tags';
 import { MAX_TAG_NAME_LENGTH } from '@/constants';
 import { N8nOption, N8nSelect } from '@n8n/design-system';
 import type { EventBus } from '@n8n/utils/event-bus';
-import { useI18n } from '@/composables/useI18n';
+import { useI18n } from '@n8n/i18n';
 import { v4 as uuid } from 'uuid';
 import { useToast } from '@/composables/useToast';
 
@@ -233,7 +233,7 @@ onClickOutside(
 				:value="CREATE_KEY"
 				class="ops"
 			>
-				<font-awesome-icon icon="plus-circle" />
+				<n8n-icon icon="circle-plus" />
 				<span>
 					{{ i18n.baseText('tagsDropdown.createTag', { interpolate: { filter } }) }}
 				</span>
@@ -257,7 +257,7 @@ onClickOutside(
 			/>
 
 			<N8nOption v-if="manageEnabled" :key="MANAGE_KEY" :value="MANAGE_KEY" class="ops manage-tags">
-				<font-awesome-icon icon="cog" />
+				<n8n-icon icon="cog" />
 				<span>{{ i18n.baseText('tagsDropdown.manageTags') }}</span>
 			</N8nOption>
 		</N8nSelect>

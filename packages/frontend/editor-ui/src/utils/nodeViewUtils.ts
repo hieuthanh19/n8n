@@ -2,6 +2,7 @@ import {
 	AI_MCP_TOOL_NODE_TYPE,
 	LIST_LIKE_NODE_OPERATIONS,
 	MAIN_HEADER_TABS,
+	NODE_MIN_INPUT_ITEMS_COUNT,
 	NODE_POSITION_CONFLICT_ALLOWLIST,
 	SET_NODE_TYPE,
 	SPLIT_IN_BATCHES_NODE_TYPE,
@@ -19,28 +20,37 @@ import type {
 import { NodeHelpers, SEND_AND_WAIT_OPERATION } from 'n8n-workflow';
 import type { RouteLocation } from 'vue-router';
 import type { ViewportBoundaries } from '@/types';
+import {
+	getRectOfNodes,
+	type Dimensions,
+	type GraphNode,
+	type Rect,
+	type ViewportTransform,
+} from '@vue-flow/core';
 
 /*
  * Canvas constants and functions
  */
 
-export const GRID_SIZE = 20;
+export const GRID_SIZE = 16;
 
-export const NODE_SIZE = 100;
-export const DEFAULT_NODE_SIZE: [number, number] = [100, 100];
-export const CONFIGURATION_NODE_SIZE: [number, number] = [80, 80];
-export const CONFIGURABLE_NODE_SIZE: [number, number] = [256, 100];
-export const DEFAULT_START_POSITION_X = 180;
-export const DEFAULT_START_POSITION_Y = 240;
+export const DEFAULT_NODE_SIZE: [number, number] = [GRID_SIZE * 6, GRID_SIZE * 6];
+export const CONFIGURATION_NODE_SIZE: [number, number] = [GRID_SIZE * 5, GRID_SIZE * 5];
+export const CONFIGURABLE_NODE_SIZE: [number, number] = [GRID_SIZE * 16, GRID_SIZE * 6];
+export const DEFAULT_START_POSITION_X = GRID_SIZE * 11;
+export const DEFAULT_START_POSITION_Y = GRID_SIZE * 15;
 export const HEADER_HEIGHT = 65;
-export const MAX_X_TO_PUSH_DOWNSTREAM_NODES = 300;
-export const PUSH_NODES_OFFSET = NODE_SIZE * 2 + GRID_SIZE;
+export const PUSH_NODES_OFFSET = DEFAULT_NODE_SIZE[0] * 2 + GRID_SIZE;
 export const DEFAULT_VIEWPORT_BOUNDARIES: ViewportBoundaries = {
 	xMin: -Infinity,
 	yMin: -Infinity,
 	xMax: Infinity,
 	yMax: Infinity,
 };
+
+// The top-center of the configuration node is not a multiple of GRID_SIZE,
+// therefore we need to offset non-main inputs to align with the nodes top-center
+export const CONFIGURATION_NODE_OFFSET = (CONFIGURATION_NODE_SIZE[0] / 2) % GRID_SIZE;
 
 /**
  * Utility functions for returning nodes found at the edges of a group
@@ -102,8 +112,10 @@ export const getNodesGroupSize = (nodes: INodeUi[]): [number, number] => {
 	const rightMostNode = getRightMostNode(nodes);
 	const bottomMostNode = getBottomMostNode(nodes);
 
-	const width = Math.abs(rightMostNode.position[0] - leftMostNode.position[0]) + NODE_SIZE;
-	const height = Math.abs(bottomMostNode.position[1] - topMostNode.position[1]) + NODE_SIZE;
+	const width =
+		Math.abs(rightMostNode.position[0] - leftMostNode.position[0]) + DEFAULT_NODE_SIZE[0];
+	const height =
+		Math.abs(bottomMostNode.position[1] - topMostNode.position[1]) + DEFAULT_NODE_SIZE[1];
 
 	return [width, height];
 };
@@ -147,6 +159,13 @@ const closestNumberDivisibleBy = (inputNumber: number, divisibleBy: number): num
 	return inputNumber2;
 };
 
+export function snapPositionToGrid(position: XYPosition): XYPosition {
+	return [
+		closestNumberDivisibleBy(position[0], GRID_SIZE),
+		closestNumberDivisibleBy(position[1], GRID_SIZE),
+	];
+}
+
 /**
  * Returns the new position for a node based on the given position and the nodes in the workflow
  */
@@ -165,13 +184,8 @@ export const getNewNodePosition = (
 		normalize?: boolean;
 	} = {},
 ): XYPosition => {
-	const resolvedOffset = [...offset];
-	resolvedOffset[0] = closestNumberDivisibleBy(resolvedOffset[0], GRID_SIZE);
-	resolvedOffset[1] = closestNumberDivisibleBy(resolvedOffset[1], GRID_SIZE);
-
-	const resolvedPosition: XYPosition = [...initialPosition];
-	resolvedPosition[0] = closestNumberDivisibleBy(resolvedPosition[0], GRID_SIZE);
-	resolvedPosition[1] = closestNumberDivisibleBy(resolvedPosition[1], GRID_SIZE);
+	const resolvedOffset = snapPositionToGrid(offset);
+	const resolvedPosition: XYPosition = snapPositionToGrid(initialPosition);
 
 	if (normalize) {
 		let conflictFound = false;
@@ -282,7 +296,7 @@ export const getNodesWithNormalizedPosition = <T extends { position: XYPosition 
 		const diffY = DEFAULT_START_POSITION_Y - leftmostTop.position[1];
 
 		nodes.forEach((node) => {
-			node.position[0] += diffX + NODE_SIZE * 2;
+			node.position[0] += diffX + DEFAULT_NODE_SIZE[0] * 2;
 			node.position[1] += diffY;
 		});
 	}
@@ -530,3 +544,92 @@ export const getNodeViewTab = (route: RouteLocation): string | null => {
 	}
 	return null;
 };
+
+export function getBounds(
+	{ x, y, zoom }: ViewportTransform,
+	{ width, height }: Dimensions,
+): ViewportBoundaries {
+	const xMin = -x / zoom;
+	const yMin = -y / zoom;
+	const xMax = (width - x) / zoom;
+	const yMax = (height - y) / zoom;
+
+	return { xMin, yMin, xMax, yMax };
+}
+
+function addPadding({ x, y, width, height }: Rect, amount: number): Rect {
+	return {
+		x: x - amount,
+		y: y - amount,
+		width: width + amount * 2,
+		height: height + amount * 2,
+	};
+}
+
+export function updateViewportToContainNodes(
+	viewport: ViewportTransform,
+	dimensions: Dimensions,
+	nodes: GraphNode[],
+	padding: number,
+): ViewportTransform {
+	function computeDelta(start: number, end: number, min: number, max: number) {
+		if (start >= min && end <= max) {
+			// Both ends are already in the range, no need for adjustment
+			return 0;
+		}
+
+		if (start < min) {
+			if (end > max) {
+				// Neither end is in the range, in this case we don't make
+				// any adjustment (for now; we could adjust zoom to fit in viewport)
+				return 0;
+			}
+
+			return min - start;
+		}
+
+		return max - end;
+	}
+
+	if (nodes.length === 0) {
+		return viewport;
+	}
+
+	const zoom = viewport.zoom;
+	const rect = addPadding(getRectOfNodes(nodes), padding / zoom);
+	const { xMax, xMin, yMax, yMin } = getBounds(viewport, dimensions);
+	const dx = computeDelta(rect.x, rect.x + rect.width, xMin, xMax);
+	const dy = computeDelta(rect.y, rect.y + rect.height, yMin, yMax);
+
+	return {
+		x: viewport.x + dx * zoom,
+		y: viewport.y + dy * zoom,
+		zoom,
+	};
+}
+
+export function calculateNodeSize(
+	isConfiguration: boolean,
+	isConfigurable: boolean,
+	mainInputCount: number,
+	mainOutputCount: number,
+	nonMainInputCount: number,
+): { width: number; height: number } {
+	const maxVerticalHandles = Math.max(mainInputCount, mainOutputCount, 1);
+	const height = DEFAULT_NODE_SIZE[1] + Math.max(0, maxVerticalHandles - 2) * GRID_SIZE * 2;
+
+	if (isConfigurable) {
+		return {
+			width:
+				Math.max(NODE_MIN_INPUT_ITEMS_COUNT, nonMainInputCount) * GRID_SIZE * 4 +
+				CONFIGURATION_NODE_OFFSET * 2,
+			height: isConfiguration ? CONFIGURATION_NODE_SIZE[1] : height,
+		};
+	}
+
+	if (isConfiguration) {
+		return { width: CONFIGURATION_NODE_SIZE[0], height: CONFIGURATION_NODE_SIZE[1] };
+	}
+
+	return { width: DEFAULT_NODE_SIZE[0], height };
+}

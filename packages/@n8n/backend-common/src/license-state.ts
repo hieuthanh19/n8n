@@ -1,4 +1,5 @@
-import { UNLIMITED_LICENSE_QUOTA, type BooleanLicenseFeature } from '@n8n/constants';
+import type { BooleanLicenseFeature } from '@n8n/constants';
+import { UNLIMITED_LICENSE_QUOTA } from '@n8n/constants';
 import { Service } from '@n8n/di';
 import { UnexpectedError } from 'n8n-workflow';
 
@@ -62,6 +63,14 @@ export class LicenseState {
 		return true;
 	}
 
+	isOidcLicensed() {
+		return this.isLicensed('feat:oidc');
+	}
+
+	isMFAEnforcementLicensed() {
+		return this.isLicensed('feat:mfaEnforcement');
+	}
+
 	isApiKeyScopesLicensed() {
 		// return this.isLicensed('feat:apiKeyScopes');
 		return true;
@@ -72,7 +81,8 @@ export class LicenseState {
 	}
 
 	isAskAiLicensed() {
-		return this.isLicensed('feat:askAi');
+		// return this.isLicensed('feat:askAi');
+		return false
 	}
 
 	isAiCreditsLicensed() {
@@ -203,8 +213,8 @@ export class LicenseState {
 	}
 
 	getInsightsMaxHistory() {
-		return this.getValue('quota:insights:maxHistoryDays') ?? 7;
-		return 7;
+		// return this.getValue('quota:insights:maxHistoryDays') ?? 7;
+		return 30;
 	}
 
 	getInsightsRetentionMaxAge() {
@@ -220,5 +230,9 @@ export class LicenseState {
 	getMaxTeamProjects() {
 		// return this.getValue('quota:maxTeamProjects') ?? 0;
 		return UNLIMITED_LICENSE_QUOTA;
+	}
+
+	getMaxWorkflowsWithEvaluations() {
+		return this.getValue('quota:evaluations:maxWorkflows') ?? 0;
 	}
 }

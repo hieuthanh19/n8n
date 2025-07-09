@@ -38,6 +38,8 @@ import {
 	WORKFLOW_ACTIVATION_CONFLICTING_WEBHOOK_MODAL_KEY,
 	FROM_AI_PARAMETERS_MODAL_KEY,
 	IMPORT_WORKFLOW_URL_MODAL_KEY,
+	WORKFLOW_EXTRACTION_NAME_MODAL_KEY,
+	WHATS_NEW_MODAL_KEY,
 } from '@/constants';
 
 import AboutModal from '@/components/AboutModal.vue';
@@ -161,12 +163,14 @@ import type { EventBus } from '@n8n/utils/event-bus';
 		</ModalRoot>
 
 		<ModalRoot :name="INVITE_USER_MODAL_KEY">
-			<InviteUsersModal />
+			<template #default="{ modalName, data }">
+				<InviteUsersModal :modal-name="modalName" :data="data" />
+			</template>
 		</ModalRoot>
 
 		<ModalRoot :name="DELETE_USER_MODAL_KEY">
-			<template #default="{ modalName, activeId }">
-				<DeleteUserModal :modal-name="modalName" :active-id="activeId" />
+			<template #default="{ modalName, data }">
+				<DeleteUserModal :modal-name="modalName" :data="data" />
 			</template>
 		</ModalRoot>
 
@@ -314,6 +318,18 @@ import type { EventBus } from '@n8n/utils/event-bus';
 		<ModalRoot :name="FROM_AI_PARAMETERS_MODAL_KEY">
 			<template #default="{ modalName, data }">
 				<FromAiParametersModal :modal-name="modalName" :data="data" />
+			</template>
+		</ModalRoot>
+
+		<ModalRoot :name="WORKFLOW_EXTRACTION_NAME_MODAL_KEY">
+			<template #default="{ modalName, data }">
+				<WorkflowExtractionNameModal :modal-name="modalName" :data="data" />
+			</template>
+		</ModalRoot>
+
+		<ModalRoot :name="WHATS_NEW_MODAL_KEY">
+			<template #default="{ modalName, data }">
+				<WhatsNewModal :modal-name="modalName" :data="data" />
 			</template>
 		</ModalRoot>
 	</div>
