@@ -2,6 +2,7 @@
 import { ViewableMimeTypes } from '@n8n/api-types';
 import { useStorage } from '@/composables/useStorage';
 import { saveAs } from 'file-saver';
+import NodeSettingsHint from '@/components/NodeSettingsHint.vue';
 import type {
 	IBinaryData,
 	IConnectedNode,
@@ -97,6 +98,7 @@ import RunDataDisplayModeSelect from '@/components/RunDataDisplayModeSelect.vue'
 import RunDataPaginationBar from '@/components/RunDataPaginationBar.vue';
 import { parseAiContent } from '@/utils/aiUtils';
 import { usePostHog } from '@/stores/posthog.store';
+import { I18nT } from 'vue-i18n';
 
 const LazyRunDataTable = defineAsyncComponent(
 	async () => await import('@/components/RunDataTable.vue'),
@@ -146,6 +148,7 @@ type Props = {
 	hidePagination?: boolean;
 	calloutMessage?: string;
 	disableRunIndexSelection?: boolean;
+	disableDisplayModeSelection?: boolean;
 	disableEdit?: boolean;
 	disablePin?: boolean;
 	compact?: boolean;
@@ -168,6 +171,7 @@ const props = withDefaults(defineProps<Props>(), {
 	hidePagination: false,
 	calloutMessage: undefined,
 	disableRunIndexSelection: false,
+	disableDisplayModeSelection: false,
 	disableEdit: false,
 	disablePin: false,
 	disableHoverHighlight: false,
@@ -311,9 +315,7 @@ const subworkflowExecutionError = computed(() => {
 	} as NodeError;
 });
 
-const hasSubworkflowExecutionError = computed(() =>
-	Boolean(workflowsStore.subWorkflowExecutionError),
-);
+const hasSubworkflowExecutionError = computed(() => !!workflowsStore.subWorkflowExecutionError);
 
 // Sub-nodes may wish to display the parent node error as it can contain additional metadata
 const parentNodeError = computed(() => {
@@ -817,7 +819,6 @@ function getNodeHints(): NodeHint[] {
 
 	return [];
 }
-
 function onItemHover(itemIndex: number | null) {
 	if (itemIndex === null) {
 		emit('itemHover', null);
@@ -1449,6 +1450,7 @@ defineExpose({ enterEditMode });
 				/>
 
 				<RunDataDisplayModeSelect
+					v-if="!disableDisplayModeSelection"
 					v-show="
 						hasPreviewSchema ||
 						(hasNodeRun &&
@@ -1573,7 +1575,7 @@ defineExpose({ enterEditMode });
 				</slot>
 			</N8nCallout>
 		</div>
-
+		<NodeSettingsHint v-if="props.paneType === 'output'" :node="node" />
 		<N8nCallout
 			v-for="hint in getNodeHints()"
 			:key="hint.message"
@@ -1757,13 +1759,13 @@ defineExpose({ enterEditMode });
 				<div v-if="search">
 					<N8nText tag="h3" size="large">{{ i18n.baseText('ndv.search.noMatch.title') }}</N8nText>
 					<N8nText>
-						<i18n-t keypath="ndv.search.noMatch.description" tag="span">
+						<I18nT keypath="ndv.search.noMatch.description" tag="span" scope="global">
 							<template #link>
 								<a href="#" @click="onSearchClear">
 									{{ i18n.baseText('ndv.search.noMatch.description.link') }}
 								</a>
 							</template>
-						</i18n-t>
+						</I18nT>
 					</N8nText>
 				</div>
 				<N8nText v-else>
@@ -1775,7 +1777,7 @@ defineExpose({ enterEditMode });
 				v-else-if="hasNodeRun && !inputData.length && !displaysMultipleNodes && !search"
 				:class="$style.center"
 			>
-				<slot name="no-output-data">xxx</slot>
+				<slot name="no-output-data"></slot>
 			</div>
 
 			<div
@@ -1831,13 +1833,13 @@ defineExpose({ enterEditMode });
 			<div v-else-if="showIoSearchNoMatchContent" :class="$style.center">
 				<N8nText tag="h3" size="large">{{ i18n.baseText('ndv.search.noMatch.title') }}</N8nText>
 				<N8nText>
-					<i18n-t keypath="ndv.search.noMatch.description" tag="span">
+					<I18nT keypath="ndv.search.noMatch.description" tag="span" scope="global">
 						<template #link>
 							<a href="#" @click="onSearchClear">
 								{{ i18n.baseText('ndv.search.noMatch.description.link') }}
 							</a>
 						</template>
-					</i18n-t>
+					</I18nT>
 				</N8nText>
 			</div>
 
@@ -1885,7 +1887,12 @@ defineExpose({ enterEditMode });
 			</Suspense>
 
 			<Suspense v-else-if="hasNodeRun && displayMode === 'ai'">
-				<LazyRunDataAi render-type="rendered" :compact="compact" :content="parsedAiContent" />
+				<LazyRunDataAi
+					render-type="rendered"
+					:compact="compact"
+					:content="parsedAiContent"
+					:search="search"
+				/>
 			</Suspense>
 
 			<Suspense v-else-if="(hasNodeRun || hasPreviewSchema) && isSchemaView">
@@ -2338,6 +2345,42 @@ defineExpose({ enterEditMode });
 
 .schema {
 	padding: 0 var(--ndv-spacing);
+}
+
+.messageSection {
+	display: flex;
+	align-items: center;
+	width: 100%;
+}
+
+.singleIcon {
+	flex-direction: row;
+	align-items: center;
+}
+
+.multipleIcons {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--spacing-2xs, 8px);
+}
+
+.multipleIcons .iconStack {
+	margin-right: 0;
+	margin-bottom: 0;
+}
+
+.iconStack {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-4xs, 4px);
+	flex-shrink: 0;
+	margin-right: var(--spacing-xs);
+}
+
+.icon {
+	color: var(--color-callout-info-icon);
+	line-height: 1;
+	font-size: var(--font-size-xs);
 }
 
 .executingMessage {
