@@ -44,6 +44,9 @@ import {
 	LOCAL_STORAGE_THEME,
 	WHATS_NEW_MODAL_KEY,
 	WORKFLOW_DIFF_MODAL_KEY,
+	PRE_BUILT_AGENTS_MODAL_KEY,
+	EXPERIMENT_TEMPLATE_RECO_V2_KEY,
+	CONFIRM_PASSWORD_MODAL_KEY,
 } from '@/constants';
 import { STORES } from '@n8n/stores';
 import type {
@@ -55,6 +58,7 @@ import type {
 	ModalState,
 	ModalKey,
 	AppliedThemeOption,
+	TabOptions,
 } from '@/Interface';
 import { defineStore } from 'pinia';
 import { useRootStore } from '@n8n/stores/useRootStore';
@@ -64,11 +68,13 @@ import { dismissBannerPermanently } from '@n8n/rest-api-client';
 import type { BannerName } from '@n8n/api-types';
 import { applyThemeToBody, getThemeOverride, isValidTheme } from './ui.utils';
 import { computed, ref } from 'vue';
+import type { IMenuItem } from '@n8n/design-system';
 import type { Connection } from '@vue-flow/core';
 import { useLocalStorage, useMediaQuery } from '@vueuse/core';
 import type { EventBus } from '@n8n/utils/event-bus';
 import type { ProjectSharingData } from '@/types/projects.types';
 import identity from 'lodash/identity';
+import * as modalRegistry from '@/moduleInitializer/modalRegistry';
 
 let savedTheme: ThemeOption = 'system';
 
@@ -98,6 +104,7 @@ export const useUIStore = defineStore(STORES.UI, () => {
 				ABOUT_MODAL_KEY,
 				CHAT_EMBED_MODAL_KEY,
 				CHANGE_PASSWORD_MODAL_KEY,
+				CONFIRM_PASSWORD_MODAL_KEY,
 				CONTACT_PROMPT_MODAL_KEY,
 				CREDENTIAL_SELECT_MODAL_KEY,
 				DUPLICATE_MODAL_KEY,
@@ -123,7 +130,7 @@ export const useUIStore = defineStore(STORES.UI, () => {
 				PROJECT_MOVE_RESOURCE_MODAL,
 				NEW_ASSISTANT_SESSION_MODAL,
 				IMPORT_WORKFLOW_URL_MODAL_KEY,
-				WHATS_NEW_MODAL_KEY,
+				PRE_BUILT_AGENTS_MODAL_KEY,
 				WORKFLOW_DIFF_MODAL_KEY,
 			].map((modalKey) => [modalKey, { open: false }]),
 		),
@@ -139,7 +146,7 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		[IMPORT_CURL_MODAL_KEY]: {
 			open: false,
 			data: {
-				curlCommand: '',
+				curlCommands: {},
 			},
 		},
 		[LOG_STREAM_MODAL_KEY]: {
@@ -217,10 +224,16 @@ export const useUIStore = defineStore(STORES.UI, () => {
 				articleId: undefined,
 			},
 		},
+		[EXPERIMENT_TEMPLATE_RECO_V2_KEY]: {
+			open: false,
+			data: {
+				nodeName: '',
+			},
+		},
 	});
 
 	const modalStack = ref<string[]>([]);
-	const sidebarMenuCollapsedPreference = useLocalStorage<boolean>('sidebar.collapsed', false);
+	const sidebarMenuCollapsedPreference = useLocalStorage<boolean>('sidebar.collapsed', true);
 	const sidebarMenuCollapsed = ref<boolean>(sidebarMenuCollapsedPreference.value);
 	const currentView = ref<string>('');
 	const stateIsDirty = ref<boolean>(false);
@@ -232,6 +245,37 @@ export const useUIStore = defineStore(STORES.UI, () => {
 	const bannerStack = ref<BannerName[]>([]);
 	const pendingNotificationsForViews = ref<{ [key in VIEWS]?: NotificationOptions[] }>({});
 	const processingExecutionResults = ref<boolean>(false);
+
+	/**
+	 * Modules can register their ProjectHeader tabs here
+	 * Since these tabs are specific to the page they are on,
+	 * we add them to separate arrays so pages can pick the right ones
+	 * at render time.
+	 * Module name is also added to the key so that we can check if the module is active
+	 * when tabs are rendered.\
+	 * @example
+	 * uiStore.registerCustomTabs('overview', 'data-table', [
+	 *   {
+	 *     label: 'Data table',
+	 *     value: 'data-table',
+	 *     to: { name: 'data-table' },
+	 *   },
+	 * ]);
+	 */
+	const moduleTabs = ref<
+		Record<'overview' | 'project' | 'shared', Record<string, Array<TabOptions<string>>>>
+	>({
+		overview: {},
+		project: {},
+		shared: {},
+	});
+
+	/**
+	 * Settings sidebar items registry per module.
+	 * Modules can register items and SettingsSidebar will render them
+	 * when the corresponding module is active.
+	 */
+	const registeredSettingsPages = ref<Record<string, IMenuItem[]>>({});
 
 	const appGridDimensions = ref<{ width: number; height: number }>({ width: 0, height: 0 });
 
@@ -328,6 +372,16 @@ export const useUIStore = defineStore(STORES.UI, () => {
 	);
 
 	const activeModals = computed(() => modalStack.value.map((modalName) => modalName));
+
+	const settingsSidebarItems = computed<IMenuItem[]>(() => {
+		const items: IMenuItem[] = [];
+		Object.entries(registeredSettingsPages.value).forEach(([moduleName, moduleItems]) => {
+			if (settingsStore.isModuleActive(moduleName)) {
+				items.push(...moduleItems);
+			}
+		});
+		return items;
+	});
 
 	const isReadOnlyView = computed(() => {
 		return ![
@@ -529,6 +583,21 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		lastCancelledConnectionPosition.value = undefined;
 	}
 
+	const registerCustomTabs = (
+		page: 'overview' | 'project' | 'shared',
+		moduleName: string,
+		tabs: Array<TabOptions<string>>,
+	) => {
+		if (!moduleTabs.value[page]) {
+			throw new Error(`Invalid page type: ${page}`);
+		}
+		moduleTabs.value[page][moduleName] = tabs;
+	};
+
+	const registerSettingsPages = (moduleName: string, items: IMenuItem[]) => {
+		registeredSettingsPages.value[moduleName] = items;
+	};
+
 	/**
 	 * Set whether we are currently in the process of fetching and deserializing
 	 * the full execution data and loading it to the store.
@@ -541,8 +610,57 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		options.banners.forEach(pushBannerToStack);
 	};
 
+	/**
+	 * Register a modal dynamically
+	 */
+	const registerModal = (modalKey: string, initialState?: ModalState) => {
+		if (!modalsById.value[modalKey]) {
+			modalsById.value[modalKey] = initialState || { open: false };
+		}
+	};
+
+	/**
+	 * Unregister a modal
+	 */
+	const unregisterModal = (modalKey: string) => {
+		if (modalsById.value[modalKey]) {
+			// Close the modal if it's open
+			if (modalsById.value[modalKey].open) {
+				closeModal(modalKey);
+			}
+			delete modalsById.value[modalKey];
+		}
+	};
+
+	/**
+	 * Initialize modals from the registry
+	 */
+	const initializeModalsFromRegistry = () => {
+		modalRegistry.getAll().forEach((modalDef, key) => {
+			registerModal(key, modalDef.initialState);
+		});
+	};
+
+	// Subscribe to registry changes
+	const unsubscribeFromModalRegistry = modalRegistry.subscribe((modals) => {
+		// Add new modals that aren't registered yet
+		modals.forEach((modalDef, key) => {
+			if (!modalsById.value[key]) {
+				registerModal(key, modalDef.initialState);
+			}
+		});
+	});
+
+	/**
+	 * Clean up modal registry subscription
+	 */
+	const cleanup = () => {
+		unsubscribeFromModalRegistry();
+	};
+
 	return {
 		appGridDimensions,
+		settingsSidebarItems,
 		appliedTheme,
 		contextBasedTranslationKeys,
 		isModalActiveById,
@@ -595,6 +713,13 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		openDeleteFolderModal,
 		openMoveToFolderModal,
 		initialize,
+		moduleTabs,
+		registerCustomTabs,
+		registerSettingsPages,
+		registerModal,
+		unregisterModal,
+		initializeModalsFromRegistry,
+		cleanup,
 	};
 });
 
@@ -611,7 +736,7 @@ export const listenForModalChanges = (opts: {
 
 	return store.$onAction((result) => {
 		const { name, after, args } = result;
-		after(async () => {
+		after(() => {
 			if (!listeningForActions.includes(name)) {
 				return;
 			}

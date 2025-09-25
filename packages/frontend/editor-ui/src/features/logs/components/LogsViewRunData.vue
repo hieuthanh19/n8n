@@ -8,8 +8,10 @@ import { waitingNodeTooltip } from '@/utils/executionUtils';
 import { N8nLink, N8nText } from '@n8n/design-system';
 import { computed, inject, ref } from 'vue';
 import { I18nT } from 'vue-i18n';
-import { PiPWindowSymbol } from '@/constants';
+import { PopOutWindowKey } from '@/constants';
 import { isSubNodeLog } from '../logs.utils';
+import RunDataItemCount from '@/components/RunDataItemCount.vue';
+import NDVEmptyState from '@/components/NDVEmptyState.vue';
 
 const { title, logEntry, paneType, collapsingTableColumnName } = defineProps<{
 	title: string;
@@ -25,7 +27,7 @@ const emit = defineEmits<{
 const locale = useI18n();
 const ndvStore = useNDVStore();
 
-const pipWindow = inject(PiPWindowSymbol, ref<Window | undefined>());
+const popOutWindow = inject(PopOutWindowKey, ref<Window | undefined>());
 
 const displayMode = ref<IRunDataDisplayMode>(paneType === 'input' ? 'schema' : 'table');
 const isMultipleInput = computed(
@@ -62,7 +64,7 @@ const isExecuting = computed(
 );
 
 function handleClickOpenNdv() {
-	ndvStore.setActiveNodeName(logEntry.node.name);
+	ndvStore.setActiveNodeName(logEntry.node.name, 'logs_view');
 }
 
 function handleChangeDisplayMode(value: IRunDataDisplayMode) {
@@ -74,8 +76,9 @@ function handleChangeDisplayMode(value: IRunDataDisplayMode) {
 	<RunData
 		v-if="runDataProps"
 		v-bind="runDataProps"
-		:key="`run-data${pipWindow ? '-pip' : ''}`"
-		:workflow="logEntry.workflow"
+		:key="`run-data${popOutWindow ? '-pop-out' : ''}`"
+		:class="$style.component"
+		:workflow-object="logEntry.workflow"
 		:workflow-execution="logEntry.execution"
 		:too-much-data-title="locale.baseText('ndv.output.tooMuchData.title')"
 		:no-data-in-branch-message="locale.baseText('ndv.output.noOutputDataInBranch')"
@@ -83,9 +86,11 @@ function handleChangeDisplayMode(value: IRunDataDisplayMode) {
 		:pane-type="paneType"
 		:disable-run-index-selection="true"
 		:compact="true"
+		:show-actions-on-hover="true"
 		:disable-pin="true"
 		:disable-edit="true"
 		:disable-hover-highlight="true"
+		:disable-settings-hint="true"
 		:display-mode="displayMode"
 		:disable-ai-content="!isSubNodeLog(logEntry)"
 		:is-executing="isExecuting"
@@ -100,17 +105,18 @@ function handleChangeDisplayMode(value: IRunDataDisplayMode) {
 			</N8nText>
 		</template>
 
+		<template #header-end="itemCountProps">
+			<RunDataItemCount v-bind="itemCountProps" />
+		</template>
+
 		<template #no-output-data>
-			<N8nText :bold="true" color="text-dark" size="large">
-				{{ locale.baseText('ndv.output.noOutputData.title') }}
-			</N8nText>
+			<NDVEmptyState :title="locale.baseText('ndv.output.noOutputData.title')" />
 		</template>
 
 		<template #node-waiting>
-			<N8nText :bold="true" color="text-dark" size="large">
-				{{ locale.baseText('ndv.output.waitNodeWaiting.title') }}
-			</N8nText>
-			<N8nText v-n8n-html="waitingNodeTooltip(logEntry.node)"></N8nText>
+			<NDVEmptyState :title="locale.baseText('ndv.output.waitNodeWaiting.title')" wide>
+				<span v-n8n-html="waitingNodeTooltip(logEntry.node)" />
+			</NDVEmptyState>
 		</template>
 
 		<template v-if="isMultipleInput" #content>
@@ -130,6 +136,10 @@ function handleChangeDisplayMode(value: IRunDataDisplayMode) {
 </template>
 
 <style lang="scss" module>
+.component {
+	--color-run-data-background: var(--color-background-light);
+}
+
 .title {
 	text-transform: uppercase;
 	letter-spacing: 3px;

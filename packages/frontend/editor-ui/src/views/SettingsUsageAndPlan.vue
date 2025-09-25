@@ -74,11 +74,7 @@ const showActivationSuccess = () => {
 };
 
 const showActivationError = (error: Error) => {
-	toast.showError(
-		error,
-		locale.baseText('settings.usageAndPlan.license.activation.error.title'),
-		error.message,
-	);
+	toast.showError(error, locale.baseText('settings.usageAndPlan.license.activation.error.title'));
 };
 
 const onLicenseActivation = async () => {
@@ -284,7 +280,7 @@ const openCommunityRegisterModal = () => {
 </template>
 
 <style lang="scss" module>
-@import '@/styles/variables';
+@use '@/styles/variables' as *;
 
 .center > div {
 	justify-content: center;

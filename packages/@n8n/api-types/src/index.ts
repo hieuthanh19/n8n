@@ -36,6 +36,7 @@ export {
 	type InsightsByWorkflow,
 	type InsightsByTime,
 	type InsightsDateRange,
+	type RestrictedInsightsByTime,
 } from './schemas/insights.schema';
 
 export {
@@ -45,3 +46,29 @@ export {
 	type UsersList,
 	usersListSchema,
 } from './schemas/user.schema';
+
+export {
+	DATA_STORE_COLUMN_REGEX,
+	DATA_STORE_COLUMN_MAX_LENGTH,
+	DATA_STORE_COLUMN_ERROR_MESSAGE,
+	type DataStore,
+	type DataStoreColumn,
+	type DataStoreCreateColumnSchema,
+	type DataStoreListFilter,
+	type DataStoreListOptions,
+	dateTimeSchema,
+	dataStoreColumnNameSchema,
+} from './schemas/data-store.schema';
+
+export type {
+	DataTableFilter,
+	DataTableFilterConditionType,
+} from './schemas/data-table-filter.schema';
+
+export type {
+	ExternalSecretsProvider,
+	ExternalSecretsProviderSecret,
+	ExternalSecretsProviderData,
+	ExternalSecretsProviderProperty,
+	ExternalSecretsProviderState,
+} from './schemas/external-secrets.schema';

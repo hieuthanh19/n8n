@@ -13,14 +13,24 @@ export function chatWithBuilder(
 	onMessageUpdated: (data: ChatRequest.ResponsePayload) => void,
 	onDone: () => void,
 	onError: (e: Error) => void,
+	abortSignal?: AbortSignal,
+	useDeprecatedCredentials = false,
 ): void {
 	void streamRequest<ChatRequest.ResponsePayload>(
 		ctx,
 		'/ai/build',
-		payload,
+		{
+			...payload,
+			payload: {
+				...payload.payload,
+				useDeprecatedCredentials,
+			},
+		},
 		onMessageUpdated,
 		onDone,
 		onError,
+		undefined,
+		abortSignal,
 	);
 }
 

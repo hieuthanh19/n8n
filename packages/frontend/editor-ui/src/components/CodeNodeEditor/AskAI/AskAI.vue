@@ -33,9 +33,15 @@ const emit = defineEmits<{
 	finishedLoading: [];
 }>();
 
-const props = defineProps<{
-	hasChanges: boolean;
-}>();
+const props = withDefaults(
+	defineProps<{
+		hasChanges: boolean;
+		isReadOnly?: boolean;
+	}>(),
+	{
+		isReadOnly: false,
+	},
+);
 
 const { getSchemaForExecutionData, getInputDataWithPinned } = useDataSchema();
 const i18n = useI18n();
@@ -85,12 +91,11 @@ function getErrorMessageByStatusCode(statusCode: number, message: string | undef
 
 function getParentNodes() {
 	const activeNode = useNDVStore().activeNode;
-	const { getCurrentWorkflow, getNodeByName } = useWorkflowsStore();
-	const workflow = getCurrentWorkflow();
+	const { workflowObject, getNodeByName } = useWorkflowsStore();
 
-	if (!activeNode || !workflow) return [];
+	if (!activeNode || !workflowObject) return [];
 
-	return workflow
+	return workflowObject
 		.getParentNodesByDepth(activeNode?.name)
 		.filter(({ name }, i, nodes) => {
 			return name !== activeNode.name && nodes.findIndex((node) => node.name === name) === i;
@@ -257,6 +262,17 @@ onMounted(() => {
 	<div>
 		<p :class="$style.intro" v-text="i18n.baseText('codeNodeEditor.askAi.intro')" />
 		<div :class="$style.inputContainer">
+			<N8nInput
+				v-model="prompt"
+				:class="$style.input"
+				type="textarea"
+				:rows="6"
+				:maxlength="ASK_AI_MAX_PROMPT_LENGTH"
+				:placeholder="i18n.baseText('codeNodeEditor.askAi.placeholder')"
+				data-test-id="ask-ai-prompt-input"
+				:readonly="props.isReadOnly"
+				@input="onPromptInput"
+			/>
 			<div :class="$style.meta">
 				<span
 					v-show="prompt.length > 1"
@@ -270,16 +286,6 @@ onMounted(() => {
 					}}
 				</a>
 			</div>
-			<N8nInput
-				v-model="prompt"
-				:class="$style.input"
-				type="textarea"
-				:rows="6"
-				:maxlength="ASK_AI_MAX_PROMPT_LENGTH"
-				:placeholder="i18n.baseText('codeNodeEditor.askAi.placeholder')"
-				data-test-id="ask-ai-prompt-input"
-				@input="onPromptInput"
-			/>
 		</div>
 		<div :class="$style.controls">
 			<div v-if="isLoading" :class="$style.loader">
@@ -351,12 +357,27 @@ onMounted(() => {
 <style module lang="scss">
 .input * {
 	border: 0 !important;
+	border-radius: 0 !important;
 }
 .input textarea {
 	font-size: var(--font-size-2xs);
-	padding-bottom: var(--spacing-2xl);
 	font-family: var(--font-family);
 	resize: none;
+
+	/* Custom scrollbar */
+	&::-webkit-scrollbar {
+		width: 4px;
+	}
+	&::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: var(--color-foreground-base);
+		border-radius: 2px;
+	}
+	&::-webkit-scrollbar-thumb:hover {
+		background: var(--color-foreground-dark);
+	}
 }
 .intro {
 	font-weight: var(--font-weight-bold);
@@ -375,6 +396,9 @@ onMounted(() => {
 	position: relative;
 }
 .help {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-4xs);
 	text-decoration: underline;
 	margin-left: auto;
 	color: #909399;
@@ -382,11 +406,10 @@ onMounted(() => {
 .meta {
 	display: flex;
 	justify-content: space-between;
-	position: absolute;
-	bottom: var(--spacing-2xs);
-	left: var(--spacing-xs);
-	right: var(--spacing-xs);
-	z-index: 1;
+	align-items: center;
+	padding: var(--spacing-2xs) var(--spacing-xs);
+	background-color: var(--color-foreground-xlight);
+	border-top: 1px solid var(--border-color-base);
 
 	* {
 		font-size: var(--font-size-2xs);

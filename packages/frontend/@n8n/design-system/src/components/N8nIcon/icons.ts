@@ -1,12 +1,22 @@
 import Binary from './custom/binary.svg';
 import BoltFilled from './custom/bolt-filled.svg';
-import Continue from './custom/Continue.svg';
-import EmptyOutput from './custom/EmptyOutput.svg';
+import Continue from './custom/continue.svg';
+import EmptyOutput from './custom/empty-output.svg';
+import FilledSquare from './custom/filled-square.svg';
 import GripLinesVertical from './custom/grip-lines-vertical.svg';
-import Json from './custom/json.svg';
+import Mcp from './custom/mcp.svg';
+import NodeDirty from './custom/node-dirty.svg';
+import NodeEllipsis from './custom/node-ellipsis.svg';
+import NodeExecutionError from './custom/node-execution-error.svg';
+import NodePin from './custom/node-pin.svg';
+import NodePlay from './custom/node-play.svg';
+import NodePower from './custom/node-power.svg';
+import NodeSuccess from './custom/node-success.svg';
+import NodeTrash from './custom/node-trash.svg';
+import NodeValidationError from './custom/node-validation-error.svg';
 import PopOut from './custom/pop-out.svg';
-import Retry from './custom/Retry.svg';
-import RunOnce from './custom/RunOnce.svg';
+import Retry from './custom/retry.svg';
+import RunOnce from './custom/run-once.svg';
 import Schema from './custom/schema.svg';
 import Spinner from './custom/spinner.svg';
 import StatusCanceled from './custom/status-canceled.svg';
@@ -34,8 +44,10 @@ import IconLucideAtSign from '~icons/lucide/at-sign';
 import IconLucideBan from '~icons/lucide/ban';
 import IconLucideBell from '~icons/lucide/bell';
 import IconLucideBook from '~icons/lucide/book';
+import IconLucideBookOpen from '~icons/lucide/book-open';
 import IconLucideBot from '~icons/lucide/bot';
 import IconLucideBox from '~icons/lucide/box';
+import IconLucideBraces from '~icons/lucide/braces';
 import IconLucideBrain from '~icons/lucide/brain';
 import IconLucideBug from '~icons/lucide/bug';
 import IconLucideCalculator from '~icons/lucide/calculator';
@@ -76,6 +88,7 @@ import IconLucideEarth from '~icons/lucide/earth';
 import IconLucideEllipsis from '~icons/lucide/ellipsis';
 import IconLucideEllipsisVertical from '~icons/lucide/ellipsis-vertical';
 import IconLucideEqual from '~icons/lucide/equal';
+import IconLucideExpand from '~icons/lucide/expand';
 import IconLucideExternalLink from '~icons/lucide/external-link';
 import IconLucideEye from '~icons/lucide/eye';
 import IconLucideEyeOff from '~icons/lucide/eye-off';
@@ -155,9 +168,11 @@ import IconLucideScissors from '~icons/lucide/scissors';
 import IconLucideSearch from '~icons/lucide/search';
 import IconLucideSend from '~icons/lucide/send';
 import IconLucideServer from '~icons/lucide/server';
+import IconLucideSettings from '~icons/lucide/settings';
 import IconLucideShare from '~icons/lucide/share';
 import IconLucideSlidersHorizontal from '~icons/lucide/sliders-horizontal';
 import IconLucideSmile from '~icons/lucide/smile';
+import IconLucideSparkles from '~icons/lucide/sparkles';
 import IconLucideSquare from '~icons/lucide/square';
 import IconLucideSquareCheck from '~icons/lucide/square-check';
 import IconLucideSquarePen from '~icons/lucide/square-pen';
@@ -169,9 +184,11 @@ import IconLucideTags from '~icons/lucide/tags';
 import IconLucideTerminal from '~icons/lucide/terminal';
 import IconLucideThumbsDown from '~icons/lucide/thumbs-down';
 import IconLucideThumbsUp from '~icons/lucide/thumbs-up';
+import IconLucideToggleRight from '~icons/lucide/toggle-right';
 import IconLucideTrash2 from '~icons/lucide/trash-2';
 import IconLucideTreePine from '~icons/lucide/tree-pine';
 import IconLucideTriangleAlert from '~icons/lucide/triangle-alert';
+import IconLucideType from '~icons/lucide/type';
 import IconLucideUndo2 from '~icons/lucide/undo-2';
 import IconLucideUnlink from '~icons/lucide/unlink';
 import IconLucideUser from '~icons/lucide/user';
@@ -208,12 +225,13 @@ export const deprecatedIconSet = {
 	'status-warning': StatusWarning,
 	'vector-square': VectorSquare,
 	schema: Schema,
-	json: Json,
+	json: IconLucideBraces,
 	binary: Binary,
 	text: Text,
 	toolbox: Toolbox,
 	spinner: Spinner,
 	xmark: IconLucideX,
+	mcp: Mcp,
 
 	// fontAwesomeIcons
 	'caret-up': IconLucideChevronUp,
@@ -398,6 +416,7 @@ export const updatedIconSet = {
 	// custom icons
 	// NOTE: ensure to replace any colors with "currentColor" in SVG
 	'bolt-filled': BoltFilled,
+	'filled-square': FilledSquare,
 	'grip-lines-vertical': GripLinesVertical,
 	variable: IconLucideVariable,
 	'pop-out': PopOut,
@@ -415,11 +434,21 @@ export const updatedIconSet = {
 	'retry-on-fail': Retry,
 	'execute-once': RunOnce,
 	schema: Schema,
-	json: Json,
+	json: IconLucideBraces,
 	binary: Binary,
 	text: Text,
 	toolbox: Toolbox,
 	spinner: Spinner,
+	'node-dirty': NodeDirty,
+	'node-ellipsis': NodeEllipsis,
+	'node-execution-error': NodeExecutionError,
+	'node-validation-error': NodeValidationError,
+	'node-pin': NodePin,
+	'node-play': NodePlay,
+	'node-power': NodePower,
+	'node-success': NodeSuccess,
+	'node-trash': NodeTrash,
+	mcp: Mcp,
 
 	// lucide
 	'align-right': IconLucideAlignRight,
@@ -435,6 +464,7 @@ export const updatedIconSet = {
 	ban: IconLucideBan,
 	bell: IconLucideBell,
 	book: IconLucideBook,
+	'book-open': IconLucideBookOpen,
 	bot: IconLucideBot,
 	box: IconLucideBox,
 	brain: IconLucideBrain,
@@ -477,6 +507,7 @@ export const updatedIconSet = {
 	ellipsis: IconLucideEllipsis,
 	'ellipsis-vertical': IconLucideEllipsisVertical,
 	equal: IconLucideEqual,
+	expand: IconLucideExpand,
 	'external-link': IconLucideExternalLink,
 	eye: IconLucideEye,
 	'eye-off': IconLucideEyeOff,
@@ -549,16 +580,19 @@ export const updatedIconSet = {
 	'refresh-cw': IconLucideRefreshCw,
 	'remove-formatting': IconLucideRemoveFormatting,
 	rss: IconLucideRss,
+	robot: IconLucideBot,
 	'satellite-dish': IconLucideSatelliteDish,
 	save: IconLucideSave,
 	scale: IconLucideScale,
 	scissors: IconLucideScissors,
 	search: IconLucideSearch,
+	settings: IconLucideSettings,
 	send: IconLucideSend,
 	server: IconLucideServer,
 	share: IconLucideShare,
 	'sliders-horizontal': IconLucideSlidersHorizontal,
 	smile: IconLucideSmile,
+	sparkles: IconLucideSparkles,
 	square: IconLucideSquare,
 	'square-check': IconLucideSquareCheck,
 	'square-pen': IconLucideSquarePen,
@@ -573,6 +607,8 @@ export const updatedIconSet = {
 	'trash-2': IconLucideTrash2,
 	'tree-pine': IconLucideTreePine,
 	'triangle-alert': IconLucideTriangleAlert,
+	type: IconLucideType,
+	'toggle-right': IconLucideToggleRight,
 	'undo-2': IconLucideUndo2,
 	unlink: IconLucideUnlink,
 	user: IconLucideUser,

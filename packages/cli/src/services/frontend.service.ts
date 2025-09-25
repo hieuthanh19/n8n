@@ -18,9 +18,10 @@ import { getLdapLoginLabel } from '@/ldap.ee/helpers.ee';
 import { License } from '@/license';
 import { LoadNodesAndCredentials } from '@/load-nodes-and-credentials';
 import { MfaService } from '@/mfa/mfa.service';
+import { CommunityPackagesConfig } from '@/modules/community-packages/community-packages.config';
+import type { CommunityPackagesService } from '@/modules/community-packages/community-packages.service';
 import { isApiEnabled } from '@/public-api';
 import { PushConfig } from '@/push/push.config';
-import type { CommunityPackagesService } from '@/services/community-packages.service';
 import { getSamlLoginLabel } from '@/sso.ee/saml/saml-helpers';
 import { getCurrentAuthenticationMethod } from '@/sso.ee/sso-helpers';
 import { UserManagementMailer } from '@/user-management/email';
@@ -59,10 +60,13 @@ export class FrontendService {
 
 		this.initSettings();
 
-		if (this.globalConfig.nodes.communityPackages.enabled) {
-			void import('@/services/community-packages.service').then(({ CommunityPackagesService }) => {
-				this.communityPackagesService = Container.get(CommunityPackagesService);
-			});
+		// @TODO: Move to community-packages module
+		if (Container.get(CommunityPackagesConfig).enabled) {
+			void import('@/modules/community-packages/community-packages.service').then(
+				({ CommunityPackagesService }) => {
+					this.communityPackagesService = Container.get(CommunityPackagesService);
+				},
+			);
 		}
 	}
 
@@ -113,20 +117,24 @@ export class FrontendService {
 			endpointWebhook: this.globalConfig.endpoints.webhook,
 			endpointWebhookTest: this.globalConfig.endpoints.webhookTest,
 			endpointWebhookWaiting: this.globalConfig.endpoints.webhookWaiting,
-			saveDataErrorExecution: config.getEnv('executions.saveDataOnError'),
-			saveDataSuccessExecution: config.getEnv('executions.saveDataOnSuccess'),
-			saveManualExecutions: config.getEnv('executions.saveDataManualExecutions'),
-			saveExecutionProgress: config.getEnv('executions.saveExecutionProgress'),
-			executionTimeout: config.getEnv('executions.timeout'),
-			maxExecutionTimeout: config.getEnv('executions.maxTimeout'),
+			saveDataErrorExecution: this.globalConfig.executions.saveDataOnError,
+			saveDataSuccessExecution: this.globalConfig.executions.saveDataOnSuccess,
+			saveManualExecutions: this.globalConfig.executions.saveDataManualExecutions,
+			saveExecutionProgress: this.globalConfig.executions.saveExecutionProgress,
+			executionTimeout: this.globalConfig.executions.timeout,
+			maxExecutionTimeout: this.globalConfig.executions.maxTimeout,
 			workflowCallerPolicyDefaultOption: this.globalConfig.workflows.callerPolicyDefaultOption,
 			timezone: this.globalConfig.generic.timezone,
 			urlBaseWebhook: this.urlService.getWebhookBaseUrl(),
 			urlBaseEditor: instanceBaseUrl,
 			binaryDataMode: this.binaryDataConfig.mode,
 			nodeJsVersion: process.version.replace(/^v/, ''),
+			nodeEnv: process.env.NODE_ENV,
 			versionCli: N8N_VERSION,
-			concurrency: config.getEnv('executions.concurrency.productionLimit'),
+			concurrency: this.globalConfig.executions.concurrency.productionLimit,
+			isNativePythonRunnerEnabled:
+				this.globalConfig.taskRunners.enabled &&
+				this.globalConfig.taskRunners.isNativePythonRunnerEnabled,
 			authCookie: {
 				secure: this.globalConfig.auth.cookie.secure,
 			},
@@ -176,6 +184,9 @@ export class FrontendService {
 					callbackUrl: `${instanceBaseUrl}/${restEndpoint}/sso/oidc/callback`,
 				},
 			},
+			dataTables: {
+				maxSize: this.globalConfig.dataTable.maxSize,
+			},
 			publicApi: {
 				enabled: isApiEnabled(),
 				latestVersion: 1,
@@ -189,6 +200,7 @@ export class FrontendService {
 			hiringBannerEnabled: this.globalConfig.hiringBanner.enabled,
 			aiAssistant: {
 				enabled: false,
+				setup: false,
 			},
 			templates: {
 				enabled: this.globalConfig.templates.enabled,
@@ -197,8 +209,11 @@ export class FrontendService {
 			executionMode: config.getEnv('executions.mode'),
 			isMultiMain: this.instanceSettings.isMultiMain,
 			pushBackend: this.pushConfig.backend,
-			communityNodesEnabled: this.globalConfig.nodes.communityPackages.enabled,
-			unverifiedCommunityNodesEnabled: this.globalConfig.nodes.communityPackages.unverifiedEnabled,
+
+			// @TODO: Move to community-packages module
+			communityNodesEnabled: Container.get(CommunityPackagesConfig).enabled,
+			unverifiedCommunityNodesEnabled: Container.get(CommunityPackagesConfig).unverifiedEnabled,
+
 			deployment: {
 				type: this.globalConfig.deployment.type,
 			},
@@ -225,6 +240,7 @@ export class FrontendService {
 				workerView: false,
 				advancedPermissions: false,
 				apiKeyScopes: false,
+				workflowDiffs: false,
 				projects: {
 					team: {
 						limit: 0,
@@ -266,7 +282,6 @@ export class FrontendService {
 				blockFileAccessToN8nFiles: this.securityConfig.blockFileAccessToN8nFiles,
 			},
 			easyAIWorkflowOnboarded: false,
-			partialExecution: this.globalConfig.partialExecutions,
 			folders: {
 				enabled: false,
 			},
@@ -353,6 +368,7 @@ export class FrontendService {
 			workerView: this.license.isWorkerViewLicensed(),
 			advancedPermissions: this.license.isAdvancedPermissionsLicensed(),
 			apiKeyScopes: this.license.isApiKeyScopesEnabled(),
+			workflowDiffs: this.licenseState.isWorkflowDiffsLicensed(),
 		});
 
 		if (this.license.isLdapEnabled()) {
@@ -392,6 +408,7 @@ export class FrontendService {
 
 		if (isAiAssistantEnabled) {
 			this.settings.aiAssistant.enabled = isAiAssistantEnabled;
+			this.settings.aiAssistant.setup = !!this.globalConfig.aiAssistant.baseUrl;
 		}
 
 		if (isAskAiEnabled) {
