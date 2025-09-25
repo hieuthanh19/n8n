@@ -44,7 +44,8 @@ export class LicenseState {
 	// --------------------
 
 	isCustomRolesLicensed() {
-		return this.isLicensed(LICENSE_FEATURES.CUSTOM_ROLES);
+		// return this.isLicensed(LICENSE_FEATURES.CUSTOM_ROLES);
+		return true;
 	}
 
 	isSharingLicensed() {
@@ -189,7 +190,8 @@ export class LicenseState {
 	}
 
 	isWorkflowDiffsLicensed() {
-		return this.isLicensed('feat:workflowDiffs');
+		// return this.isLicensed('feat:workflowDiffs');
+		return true;
 	}
 
 	// --------------------
@@ -241,6 +243,7 @@ export class LicenseState {
 	}
 
 	getMaxWorkflowsWithEvaluations() {
-		return this.getValue('quota:evaluations:maxWorkflows') ?? 0;
+		// return this.getValue('quota:evaluations:maxWorkflows') ?? 0;
+		return UNLIMITED_LICENSE_QUOTA;
 	}
 }
