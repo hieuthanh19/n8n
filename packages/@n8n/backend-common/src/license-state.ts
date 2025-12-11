@@ -26,11 +26,22 @@ export class LicenseState {
 	// --------------------
 	//     core queries
 	// --------------------
-
-	isLicensed(feature: BooleanLicenseFeature) {
+	/*
+	 * If the feature is a string. checks if the feature is licensed
+	 * If the feature is an array of strings, it checks if any of the features are licensed
+	 */
+	isLicensed(feature: BooleanLicenseFeature | BooleanLicenseFeature[]) {
 		this.assertProvider();
 
-		return this.licenseProvider.isLicensed(feature);
+		if (typeof feature === 'string') return this.licenseProvider.isLicensed(feature);
+
+		for (const featureName of feature) {
+			if (this.licenseProvider.isLicensed(featureName)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	getValue<T extends keyof FeatureReturnType>(feature: T): FeatureReturnType[T] {
@@ -45,6 +56,11 @@ export class LicenseState {
 
 	isCustomRolesLicensed() {
 		// return this.isLicensed(LICENSE_FEATURES.CUSTOM_ROLES);
+		return true;
+	}
+
+	isDynamicCredentialsLicensed() {
+		// return this.isLicensed(LICENSE_FEATURES.DYNAMIC_CREDENTIALS);
 		return true;
 	}
 
@@ -134,11 +150,6 @@ export class LicenseState {
 		return true;
 	}
 
-	isWorkflowHistoryLicensed() {
-		// return this.isLicensed('feat:workflowHistory');
-		return true;
-	}
-
 	isAPIDisabled() {
 		// return this.isLicensed('feat:apiDisabled');
 		return false;
@@ -192,6 +203,10 @@ export class LicenseState {
 	isWorkflowDiffsLicensed() {
 		// return this.isLicensed('feat:workflowDiffs');
 		return true;
+	}
+
+	isProvisioningLicensed() {
+		return this.isLicensed(['feat:saml', 'feat:oidc']);
 	}
 
 	// --------------------
