@@ -35,6 +35,9 @@ import type {
 	DisplayCondition,
 	NodeConnectionType,
 	ICredentialDataDecryptedObject,
+	FeatureCondition,
+	NodeFeaturesDefinition,
+	NodeFeatures,
 } from './interfaces';
 import { validateFilterParameter } from './node-parameters/filter-parameter';
 import type { IRunExecutionData } from './run-execution-data/run-execution-data';
@@ -252,6 +255,37 @@ export function isSubNodeType(
 		: false;
 }
 
+/**
+ * Evaluates a feature condition against a node version.
+ * @param featureDef The feature condition definition
+ * @param nodeVersion The node version to evaluate against
+ * @returns true if the feature is enabled, false otherwise
+ */
+function evaluateFeature(featureDef: FeatureCondition, nodeVersion: number): boolean {
+	return checkConditions(featureDef['@version'], [nodeVersion]);
+}
+
+/**
+ * Evaluates all feature definitions for a node type and returns the computed features.
+ * @param featuresDef The feature definitions from the node type description
+ * @param nodeVersion The node version to evaluate against
+ * @returns A record of feature names to their enabled state
+ */
+export function getNodeFeatures(
+	featuresDef: NodeFeaturesDefinition | undefined,
+	nodeVersion: number,
+): NodeFeatures {
+	if (!featuresDef) {
+		return {};
+	}
+
+	const features: NodeFeatures = {};
+	for (const [featureName, condition] of Object.entries(featuresDef)) {
+		features[featureName] = evaluateFeature(condition, nodeVersion);
+	}
+	return features;
+}
+
 const getPropertyValues = (
 	nodeValues: INodeParameters | ICredentialDataDecryptedObject,
 	propertyName: string,
@@ -267,6 +301,15 @@ const getPropertyValues = (
 		value = node?.typeVersion || 0;
 	} else if (propertyName === '@tool') {
 		value = nodeTypeDescription?.name.endsWith('Tool') ?? false;
+	} else if (propertyName === '@feature') {
+		if (!nodeTypeDescription?.features || !node?.typeVersion) {
+			return [];
+		}
+
+		const features = getNodeFeatures(nodeTypeDescription.features, node.typeVersion);
+		return Object.entries(features)
+			.filter(([_, enabled]) => enabled)
+			.map(([name]) => name);
 	} else {
 		// Get the value from current level
 		value = get(nodeValues, propertyName);
@@ -295,6 +338,12 @@ const checkConditions = (
 			Object.keys(condition).length === 1
 		) {
 			const [key, targetValue] = Object.entries(condition._cnd)[0];
+
+			// Special case: empty array handling
+			if (actualValues.length === 0) {
+				if (key === 'not') return true; // Value is not present, so 'not' is true
+				return false; // For all other keys, empty array means condition is not met
+			}
 
 			return actualValues.every((propertyValue) => {
 				if (key === 'eq') {
@@ -381,7 +430,7 @@ export function displayParameter(
 				return true;
 			}
 
-			if (values.length === 0 || !checkConditions(show[propertyName]!, values)) {
+			if (!checkConditions(show[propertyName]!, values)) {
 				return false;
 			}
 		}
@@ -714,7 +763,7 @@ export function getNodeParameters(
 					// and should not be replaced with default value
 					nodeParameters[nodeProperties.name] =
 						nodeValues[nodeProperties.name] !== undefined
-							? nodeValues[nodeProperties.name]
+							? deepCopy(nodeValues[nodeProperties.name])
 							: nodeProperties.default;
 				} else if (
 					nodeProperties.type === 'resourceLocator' &&
@@ -722,11 +771,11 @@ export function getNodeParameters(
 				) {
 					nodeParameters[nodeProperties.name] =
 						nodeValues[nodeProperties.name] !== undefined
-							? nodeValues[nodeProperties.name]
+							? deepCopy(nodeValues[nodeProperties.name])
 							: { __rl: true, ...nodeProperties.default };
 				} else {
 					nodeParameters[nodeProperties.name] =
-						nodeValues[nodeProperties.name] ?? nodeProperties.default;
+						deepCopy(nodeValues[nodeProperties.name]) ?? nodeProperties.default;
 				}
 				nodeParametersFull[nodeProperties.name] = nodeParameters[nodeProperties.name];
 			} else if (
@@ -737,7 +786,7 @@ export function getNodeParameters(
 				(nodeValues[nodeProperties.name] !== undefined && parentType === 'collection')
 			) {
 				// Set only if it is different to the default value
-				nodeParameters[nodeProperties.name] = nodeValues[nodeProperties.name];
+				nodeParameters[nodeProperties.name] = deepCopy(nodeValues[nodeProperties.name]);
 				nodeParametersFull[nodeProperties.name] = nodeParameters[nodeProperties.name];
 				continue;
 			}
@@ -761,7 +810,7 @@ export function getNodeParameters(
 
 				// Return directly the values like they are
 				if (nodeValues[nodeProperties.name] !== undefined) {
-					nodeParameters[nodeProperties.name] = nodeValues[nodeProperties.name];
+					nodeParameters[nodeProperties.name] = deepCopy(nodeValues[nodeProperties.name]);
 				} else if (returnDefaults) {
 					// Does not have values defined but defaults should be returned
 					if (Array.isArray(nodeProperties.default)) {
@@ -807,7 +856,7 @@ export function getNodeParameters(
 			let tempNodePropertiesArray: INodeProperties[];
 			let nodePropertyOptions: INodePropertyCollection | undefined;
 
-			let propertyValues = nodeValues[nodeProperties.name];
+			let propertyValues = deepCopy(nodeValues[nodeProperties.name]);
 			if (returnDefaults) {
 				if (propertyValues === undefined) {
 					propertyValues = deepCopy(nodeProperties.default);
@@ -823,7 +872,7 @@ export function getNodeParameters(
 				// For fixedCollections, which only allow one value, it is important to still return
 				// the empty object which indicates that a value got added, even if it does not have
 				// anything set. If that is not done, the value would get lost.
-				return nodeValues;
+				return deepCopy(nodeValues);
 			}
 
 			// Iterate over all collections

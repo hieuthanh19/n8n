@@ -10,12 +10,6 @@ export const NDV_IN_FOCUS_PANEL_EXPERIMENT = {
 	variant: 'variant',
 };
 
-export const COMMAND_BAR_EXPERIMENT = {
-	name: 'command_bar',
-	control: 'control',
-	variant: 'variant',
-};
-
 export const EXTRA_TEMPLATE_LINKS_EXPERIMENT = {
 	name: '034_extra_template_links',
 	control: 'control',
@@ -35,12 +29,6 @@ export const BATCH_11AUG_EXPERIMENT = {
 	variantReadyToRun: 'variant-ready-to-run-workflows',
 	variantReadyToRun2: 'variant-ready-to-run-workflows_v2',
 	variantReadyToRun3: 'variant-ready-to-run-workflows_v3',
-};
-
-export const PRE_BUILT_AGENTS_EXPERIMENT = {
-	name: '038_pre_built_agents',
-	control: 'control',
-	variant: 'variant',
 };
 
 export const TEMPLATE_RECO_V2 = {
@@ -70,11 +58,11 @@ export const READY_TO_RUN_V2_EXPERIMENT = {
 	variant2: 'variant-2-twoboxes',
 };
 
-export const READY_TO_RUN_V2_PART2_EXPERIMENT = {
-	name: '045_ready-to-run-worfklow_v2-2',
+export const READY_TO_RUN_V2_P3_EXPERIMENT = {
+	name: '059_ready-to-run-worfklow_v2-3',
 	control: 'control',
-	variant3: 'variant-3',
-	variant4: 'variant-4',
+	variant5: 'variant-5',
+	variant6: 'variant-6',
 };
 
 export const PERSONALIZED_TEMPLATES_V3 = {
@@ -101,16 +89,22 @@ export const AI_BUILDER_MULTI_AGENT_EXPERIMENT = {
 	variant: 'variant',
 };
 
+export const TAMPER_PROOF_INVITE_LINKS = {
+	name: '061_tamper_proof_invite_links',
+	control: 'control',
+	variant: 'variant',
+};
+
 export const EXPERIMENTS_TO_TRACK = [
 	EXTRA_TEMPLATE_LINKS_EXPERIMENT.name,
 	TEMPLATE_ONBOARDING_EXPERIMENT.name,
 	BATCH_11AUG_EXPERIMENT.name,
-	PRE_BUILT_AGENTS_EXPERIMENT.name,
 	TEMPLATE_RECO_V2.name,
 	TEMPLATES_DATA_QUALITY_EXPERIMENT.name,
-	READY_TO_RUN_V2_PART2_EXPERIMENT.name,
+	READY_TO_RUN_V2_P3_EXPERIMENT.name,
 	UPGRADE_PLAN_CTA_EXPERIMENT.name,
 	AI_BUILDER_TEMPLATE_EXAMPLES_EXPERIMENT.name,
 	AI_BUILDER_MULTI_AGENT_EXPERIMENT.name,
 	TEMPLATE_SETUP_EXPERIENCE.name,
+	TAMPER_PROOF_INVITE_LINKS.name,
 ];
