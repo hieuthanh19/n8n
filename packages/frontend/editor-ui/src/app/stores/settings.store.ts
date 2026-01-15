@@ -115,17 +115,13 @@ export const useSettingsStore = defineStore(STORES.SETTINGS, () => {
 
 	const isSmtpSetup = computed(() => userManagement.value.smtpSetup);
 
-	const isPersonalizationSurveyEnabled = computed(
-		() => settings.value.telemetry?.enabled && settings.value.personalizationSurveyEnabled,
-	);
+	const isPersonalizationSurveyEnabled = false;
 
 	const telemetry = computed(() => settings.value.telemetry);
 
 	const logLevel = computed(() => settings.value.logLevel);
 
-	const isTelemetryEnabled = computed(
-		() => settings.value.telemetry && settings.value.telemetry.enabled,
-	);
+	const isTelemetryEnabled = false;
 
 	const isMFAEnforcementLicensed = computed(() => {
 		return settings.value.enterprise?.mfaEnforcement ?? false;
